@@ -11,7 +11,7 @@ try:
     from app.agents.prompts import get_prompt
 except ImportError:
     def get_prompt(name: str, version: str) -> str:
-        return f"Synthesize these learnings into maximum {num_target} units."
+        return "Synthesize the raw learnings into structured, reusable knowledge units."
 
 class LearningSynthesizer:
     def __init__(self, llm: LLMProvider, prompt_version: str = 'v1'):

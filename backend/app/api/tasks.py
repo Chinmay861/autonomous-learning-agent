@@ -1,7 +1,8 @@
 """
 Task API endpoints - CRUD operations and execution control.
 """
-from typing import List
+import logging
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse, PlainTextResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,6 +22,8 @@ from app.api.auth import get_current_user
 from app.api.dependencies import get_job_manager, get_file_storage
 from app.workers.job_manager import JobManager
 from app.learning.persistence import FileStorageManager, SnapshotManager
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
