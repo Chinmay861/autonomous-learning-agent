@@ -1,0 +1,17 @@
+{"type": "embed", "ts": "2026-09-20T13:42:15.879330+00:00", "run": "", "task_id": "", "n": 1, "dur_s": 85.3513}
+{"type": "embed", "ts": "2026-09-20T13:42:30.333277+00:00", "run": "EP01-train", "task_id": "30f4d615-e3a9-45d6-a4bb-8ec1fd184e46", "n": 1, "dur_s": 0.2476}
+{"type": "retrieval", "ts": "2026-09-20T13:42:30.340121+00:00", "run": "EP01-train", "task_id": "30f4d615-e3a9-45d6-a4bb-8ec1fd184e46", "iteration": 1, "count": 0, "scores": [], "ids": [], "dur_s": 0.2545}
+{"type": "embed", "ts": "2026-09-20T13:43:57.100246+00:00", "run": "EP01-train", "task_id": "30f4d615-e3a9-45d6-a4bb-8ec1fd184e46", "n": 1, "dur_s": 0.2703}
+{"type": "retrieval", "ts": "2026-09-20T13:43:57.107869+00:00", "run": "EP01-train", "task_id": "30f4d615-e3a9-45d6-a4bb-8ec1fd184e46", "iteration": 2, "count": 0, "scores": [], "ids": [], "dur_s": 0.277}
+{"type": "embed", "ts": "2026-09-20T13:46:21.867585+00:00", "run": "EP01-train", "task_id": "30f4d615-e3a9-45d6-a4bb-8ec1fd184e46", "n": 1, "dur_s": 0.3071}
+{"type": "retrieval", "ts": "2026-09-20T13:46:21.871937+00:00", "run": "EP01-train", "task_id": "30f4d615-e3a9-45d6-a4bb-8ec1fd184e46", "iteration": 3, "count": 0, "scores": [], "ids": [], "dur_s": 0.3115}
+{"type": "embed", "ts": "2026-09-20T13:48:31.708665+00:00", "run": "EP01-train", "task_id": "30f4d615-e3a9-45d6-a4bb-8ec1fd184e46", "n": 1, "dur_s": 0.2762}
+{"type": "retrieval", "ts": "2026-09-20T13:48:31.713958+00:00", "run": "EP01-train", "task_id": "30f4d615-e3a9-45d6-a4bb-8ec1fd184e46", "iteration": 4, "count": 0, "scores": [], "ids": [], "dur_s": 0.2814}
+{"type": "embed", "ts": "2026-09-20T13:50:43.557039+00:00", "run": "EP01-train", "task_id": "30f4d615-e3a9-45d6-a4bb-8ec1fd184e46", "n": 1, "dur_s": 0.3001}
+{"type": "retrieval", "ts": "2026-09-20T13:50:43.560220+00:00", "run": "EP01-train", "task_id": "30f4d615-e3a9-45d6-a4bb-8ec1fd184e46", "iteration": 5, "count": 0, "scores": [], "ids": [], "dur_s": 0.3033}
+{"type": "embed", "ts": "2026-09-20T13:54:19.057129+00:00", "run": "EP02-train", "task_id": "854d3ccb-4cd3-4a0f-a94b-740da21c9828", "n": 1, "dur_s": 0.3076}
+{"type": "retrieval", "ts": "2026-09-20T13:54:19.060063+00:00", "run": "EP02-train", "task_id": "854d3ccb-4cd3-4a0f-a94b-740da21c9828", "iteration": 1, "count": 0, "scores": [], "ids": [], "dur_s": 0.3106}
+{"type": "embed", "ts": "2026-09-20T13:55:13.352294+00:00", "run": "EP02-train", "task_id": "854d3ccb-4cd3-4a0f-a94b-740da21c9828", "n": 1, "dur_s": 0.2734}
+{"type": "retrieval", "ts": "2026-09-20T13:55:13.357687+00:00", "run": "EP02-train", "task_id": "854d3ccb-4cd3-4a0f-a94b-740da21c9828", "iteration": 2, "count": 0, "scores": [], "ids": [], "dur_s": 0.2787}
+{"type": "embed", "ts": "2026-09-20T13:56:53.591960+00:00", "run": "EP02-train", "task_id": "854d3ccb-4cd3-4a0f-a94b-740da21c9828", "n": 1, "dur_s": 0.4108}
+{"type": "retrieval", "ts": "2026-09-20T13:56:53.596550+00:00", "run": "EP02-train", "task_id": "854d3ccb-4cd3-4a0f-a94b-740da21c9828", "iteration": 3, "count": 0, "scores": [], "ids": [], "dur_s": 0.4154}

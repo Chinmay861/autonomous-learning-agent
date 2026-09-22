@@ -1,0 +1,258 @@
+{
+  "metrics": {
+    "success_rate": {
+      "a_mean": 1,
+      "b_mean": 1,
+      "diff": 0,
+      "pct": 0.0
+    },
+    "moves_used": {
+      "a_mean": 4.6,
+      "b_mean": 4.4,
+      "diff": -0.1999999999999993,
+      "pct": -4.347826086956506
+    },
+    "excess_moves": {
+      "a_mean": 0.6,
+      "b_mean": 0.4,
+      "diff": -0.19999999999999996,
+      "pct": -33.33333333333333
+    },
+    "path_efficiency": {
+      "a_mean": 0.88,
+      "b_mean": 0.92,
+      "diff": 0.040000000000000036,
+      "pct": 4.545454545454549
+    },
+    "exploration_efficiency": {
+      "a_mean": 0.88,
+      "b_mean": 0.92,
+      "diff": 0.040000000000000036,
+      "pct": 4.545454545454549
+    },
+    "invalid_moves": {
+      "a_mean": 0.6,
+      "b_mean": 0.4,
+      "diff": -0.19999999999999996,
+      "pct": -33.33333333333333
+    },
+    "repeated_moves": {
+      "a_mean": 0,
+      "b_mean": 0,
+      "diff": 0,
+      "pct": null
+    },
+    "cells_visited": {
+      "a_mean": 5,
+      "b_mean": 5,
+      "diff": 0,
+      "pct": 0.0
+    },
+    "cells_seen": {
+      "a_mean": 21,
+      "b_mean": 21,
+      "diff": 0,
+      "pct": 0.0
+    },
+    "iterations": {
+      "a_mean": 4.6,
+      "b_mean": 4.4,
+      "diff": -0.1999999999999993,
+      "pct": -4.347826086956506
+    },
+    "duration_s": {
+      "a_mean": 735.986,
+      "b_mean": 661.862,
+      "diff": -74.12400000000002,
+      "pct": -10.071387227474439
+    },
+    "llm_calls": {
+      "a_mean": 32.4,
+      "b_mean": 30.4,
+      "diff": -2.0,
+      "pct": -6.172839506172839
+    },
+    "llm_failed": {
+      "a_mean": 0,
+      "b_mean": 0,
+      "diff": 0,
+      "pct": null
+    },
+    "llm_empty": {
+      "a_mean": 0,
+      "b_mean": 0,
+      "diff": 0,
+      "pct": null
+    },
+    "prompt_tokens": {
+      "a_mean": 46601.4,
+      "b_mean": 43514.6,
+      "diff": -3086.800000000003,
+      "pct": -6.6238353354191135
+    },
+    "completion_tokens": {
+      "a_mean": 137743.6,
+      "b_mean": 121316.4,
+      "diff": -16427.20000000001,
+      "pct": -11.925926141033058
+    },
+    "reasoning_tokens": {
+      "a_mean": 105017.6,
+      "b_mean": 94507.8,
+      "diff": -10509.800000000003,
+      "pct": -10.007655859589251
+    },
+    "total_tokens": {
+      "a_mean": 184345,
+      "b_mean": 164831,
+      "diff": -19514,
+      "pct": -10.585586807344924
+    },
+    "avg_llm_latency_s": {
+      "a_mean": 21.0368,
+      "b_mean": 20.454,
+      "diff": -0.5827999999999989,
+      "pct": -2.7703833282628483
+    },
+    "http_429": {
+      "a_mean": 0,
+      "b_mean": 0,
+      "diff": 0,
+      "pct": null
+    },
+    "retrieved_total": {
+      "a_mean": 0,
+      "b_mean": 15,
+      "diff": 15,
+      "pct": null
+    },
+    "iterations_with_memory": {
+      "a_mean": 0,
+      "b_mean": 3.6,
+      "diff": 3.6,
+      "pct": null
+    },
+    "writes_insert": {
+      "a_mean": 89.8,
+      "b_mean": 64.2,
+      "diff": -25.599999999999994,
+      "pct": -28.50779510022271
+    },
+    "writes_merge": {
+      "a_mean": 0.8,
+      "b_mean": 1,
+      "diff": 0.19999999999999996,
+      "pct": 24.999999999999993
+    },
+    "points_after": {
+      "a_mean": 268.4,
+      "b_mean": 179.6,
+      "diff": -88.79999999999998,
+      "pct": -33.084947839046194
+    },
+    "learnings_created": {
+      "a_mean": 23.8,
+      "b_mean": 21.6,
+      "diff": -2.1999999999999993,
+      "pct": -9.243697478991594
+    },
+    "known_rules_final": {
+      "a_mean": 5.4,
+      "b_mean": 5.8,
+      "diff": 0.39999999999999947,
+      "pct": 7.407407407407397
+    }
+  },
+  "trends": {
+    "A_moves_slope": -0.09999999999999983,
+    "B_moves_slope": -5.152198686318831e-17,
+    "A_rules_slope": -0.6000000000000006,
+    "B_rules_slope": -0.1
+  },
+  "unseen_eval": {
+    "A": [
+      {
+        "arm": "A-OFF",
+        "episode": 16,
+        "label": "EP16-eval",
+        "split": "eval",
+        "success": 1,
+        "moves_used": 5,
+        "steps": 5,
+        "optimal_moves": 4,
+        "excess_moves": 1,
+        "invalid_moves": 1,
+        "repeated_moves": 0,
+        "trap_activations": 0,
+        "cells_visited": 5,
+        "cells_seen": 21,
+        "path_efficiency": 0.8,
+        "exploration_efficiency": 0.8,
+        "iterations": 5,
+        "duration_s": 751.39,
+        "llm_calls": 36,
+        "llm_failed": 0,
+        "llm_empty": 0,
+        "prompt_tokens": 52148,
+        "completion_tokens": 157218,
+        "reasoning_tokens": 117876,
+        "total_tokens": 209366,
+        "avg_llm_latency_s": 19.935,
+        "prompt_chars": 196053,
+        "http_429": 0,
+        "retrieval_calls": 0,
+        "retrieved_total": 0,
+        "iterations_with_memory": 0,
+        "writes_insert": 103,
+        "writes_merge": 2,
+        "store_calls": 105,
+        "points_after": 552,
+        "learnings_created": 29,
+        "rule_updates": 5,
+        "known_rules_final": 2
+      }
+    ],
+    "B": [
+      {
+        "arm": "B-ON",
+        "episode": 16,
+        "label": "EP16-eval",
+        "split": "eval",
+        "success": 1,
+        "moves_used": 4,
+        "steps": 4,
+        "optimal_moves": 4,
+        "excess_moves": 0,
+        "invalid_moves": 0,
+        "repeated_moves": 0,
+        "trap_activations": 0,
+        "cells_visited": 5,
+        "cells_seen": 21,
+        "path_efficiency": 1.0,
+        "exploration_efficiency": 1.0,
+        "iterations": 4,
+        "duration_s": 847.15,
+        "llm_calls": 29,
+        "llm_failed": 0,
+        "llm_empty": 0,
+        "prompt_tokens": 40935,
+        "completion_tokens": 128688,
+        "reasoning_tokens": 99935,
+        "total_tokens": 169623,
+        "avg_llm_latency_s": 26.905,
+        "prompt_chars": 150408,
+        "http_429": 0,
+        "retrieval_calls": 4,
+        "retrieved_total": 20,
+        "iterations_with_memory": 4,
+        "writes_insert": 81,
+        "writes_merge": 4,
+        "store_calls": 85,
+        "points_after": 402,
+        "learnings_created": 18,
+        "rule_updates": 4,
+        "known_rules_final": 5
+      }
+    ]
+  }
+}

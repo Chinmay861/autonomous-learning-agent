@@ -1,0 +1,304 @@
+{
+  "episode": 4,
+  "episode_label": "EP04-train",
+  "phase": "ON",
+  "experiment": "B",
+  "tag": "maze5v3",
+  "maze_size": 5,
+  "maze_seed": 1004,
+  "key_door": false,
+  "traps": 0,
+  "budget": 30,
+  "task_id": "3f16a406-5f31-4cd2-9368-239e244312db",
+  "model": "deepseek-v4.1-flash",
+  "reasoning_effort": "max",
+  "started_at": "2026-09-20T14:32:26.666460+00:00",
+  "ended_at": "2026-09-20T14:43:25.831781+00:00",
+  "duration_s": 659.17,
+  "error": null,
+  "completion_status": "completed",
+  "success": true,
+  "iterations_used": 5,
+  "llm": {
+    "calls": 32,
+    "ok": 32,
+    "failed": 0,
+    "empty_content": 0,
+    "call_time_s": 623.759,
+    "avg_latency_s": 19.492,
+    "max_latency_s": 51.784,
+    "prompt_tokens": 52496,
+    "completion_tokens": 130401,
+    "reasoning_tokens": 101283,
+    "total_tokens": 182897,
+    "prompt_chars": 191552,
+    "models": {
+      "deepseek-v4.1-flash": 32
+    },
+    "call_types": {
+      "Task Description": 7,
+      "Iteration": 5,
+      "Please evaluate the following action and": 5,
+      "Extract learnings from the following epi": 5,
+      "Current Known Rules": 5,
+      "Evaluate the current strategy and recomm": 5
+    }
+  },
+  "http": {
+    "requests": 32,
+    "statuses": {
+      "200": 32
+    },
+    "retries_429": 0,
+    "errors": 0
+  },
+  "env": {
+    "maze_size": 5,
+    "maze_seed": 1004,
+    "optimal_moves": 4,
+    "success": true,
+    "failed_budget": false,
+    "steps": 5,
+    "moves_used": 5,
+    "penalty_moves": 0,
+    "invalid_moves": 1,
+    "repeated_moves": 0,
+    "trap_activations": 0,
+    "cells_visited": 5,
+    "cells_seen": 21,
+    "key_collected": false,
+    "door_opened": false,
+    "final_position": [
+      4,
+      4
+    ],
+    "reward_total": 102.0
+  },
+  "derived": {
+    "path_efficiency": 0.8,
+    "exploration_efficiency": 0.8,
+    "excess_moves_over_optimal": 1,
+    "successful": true
+  },
+  "memory": {
+    "retrieval_calls": 5,
+    "retrieved_total": 25,
+    "retrieved_mean_per_iteration": 5.0,
+    "iterations_with_memory": 5,
+    "avg_similarity": 0.7351,
+    "writes_insert": 64,
+    "writes_merge": 4,
+    "store_calls": 68,
+    "points_before": 182,
+    "points_after": 246,
+    "embed_calls": 73,
+    "embed_time_s": 33.317
+  },
+  "agent": {
+    "learnings_created": 21,
+    "rule_updates": 5,
+    "strategy_changes": 2,
+    "snapshots": 0,
+    "synthesis_events": 1,
+    "synthesis_units": 68,
+    "synthesis_stored": 68,
+    "known_rules_final": 8,
+    "db_iterations": 5
+  },
+  "maze_map": {
+    "size": 5,
+    "grid": [
+      "#####",
+      "#.#.#",
+      "#...#",
+      "#...#",
+      "#####"
+    ],
+    "start": [
+      2,
+      2
+    ],
+    "exit": [
+      4,
+      4
+    ],
+    "key": null,
+    "door": null,
+    "traps": [],
+    "optimal_moves": 4
+  },
+  "per_iteration": [
+    {
+      "iteration": 1,
+      "score": 0.0,
+      "retrieved_count": 5,
+      "success": false,
+      "reward": -2.0,
+      "result": "Result: BLOCKED. Wall at (2, 1). Position: (2, 2).",
+      "error": null,
+      "evaluation": {
+        "success": null,
+        "mistake": "Assumed 'Up' increases y. The game appears to use screen coordinates where Up decreases y; from (2,2), Up targets (2,1), which is a known wall.",
+        "discovery": "Moving Up from (2,2) is blocked by the wall at (2,1). Blocked moves do not increase Moves used or Invalid moves, so probing a wall has no penalty."
+      },
+      "learnings": 5,
+      "tool": "move",
+      "direction": "Up",
+      "retrieved_top": [
+        "Solution path must be derived from feedback",
+        "Persistent layout knowledge should carry across iterations",
+        "Action Result Supersedes Embedded Environment State"
+      ]
+    },
+    {
+      "iteration": 2,
+      "score": -2.0,
+      "retrieved_count": 5,
+      "success": true,
+      "reward": 1.0,
+      "result": "Result: SAFE. Position: (2, 3). Moves used: 2/30.",
+      "error": null,
+      "evaluation": {
+        "success": null,
+        "mistake": "None",
+        "discovery": "Cell (2,3) is safe/open and reachable from (2,2). Given the visible maze layout, Down appears to be the only safe cardinal move from (2,2), since Up/Left/Right are adjacent to walls or already blocked"
+      },
+      "learnings": 4,
+      "tool": "move",
+      "direction": "Down",
+      "retrieved_top": [
+        "Solution path must be derived from feedback",
+        "Persistent layout knowledge should carry across iterations",
+        "Action Result Supersedes Embedded Environment State"
+      ]
+    },
+    {
+      "iteration": 3,
+      "score": -1.0,
+      "retrieved_count": 5,
+      "success": true,
+      "reward": 1.0,
+      "result": "Result: SAFE. Position: (3, 3). Moves used: 3/30.",
+      "error": null,
+      "evaluation": {
+        "success": null,
+        "mistake": "None",
+        "discovery": "Cell (3,3) is SAFE/open, extending the known safe path from (2,3) to the right."
+      },
+      "learnings": 6,
+      "tool": "move",
+      "direction": "Right",
+      "retrieved_top": [
+        "Solution path must be derived from feedback",
+        "Persistent layout knowledge should carry across iterations",
+        "Action Result Supersedes Embedded Environment State"
+      ]
+    },
+    {
+      "iteration": 4,
+      "score": 0.0,
+      "retrieved_count": 5,
+      "success": true,
+      "reward": 1.0,
+      "result": "Result: SAFE. Position: (4, 3). Moves used: 4/30.",
+      "error": null,
+      "evaluation": {
+        "success": null,
+        "mistake": "None",
+        "discovery": "Cell (4,3) is confirmed safe (no trap), and the agent now sits directly above exit E at (4,4). Column 4 between rows 3 and 4 is clear, so a single Down move should reach the exit; the optimal next act"
+      },
+      "learnings": 3,
+      "tool": "move",
+      "direction": "Right",
+      "retrieved_top": [
+        "Solution path must be derived from feedback",
+        "Persistent layout knowledge should carry across iterations",
+        "Action Result Supersedes Embedded Environment State"
+      ]
+    },
+    {
+      "iteration": 5,
+      "score": 1.0,
+      "retrieved_count": 5,
+      "success": true,
+      "reward": 101.0,
+      "result": "Result: EXIT FOUND. Position: (4, 4). Moves used: 5/30.",
+      "error": null,
+      "evaluation": {
+        "success": null,
+        "mistake": "None",
+        "discovery": "The exit is confirmed at (4,4); it is reachable by moving Down from (4,3), and stepping onto it immediately terminates the episode with EXIT FOUND."
+      },
+      "learnings": 3,
+      "tool": "move",
+      "direction": "Down",
+      "retrieved_top": [
+        "Solution path must be derived from feedback",
+        "Persistent layout knowledge should carry across iterations",
+        "Action Result Supersedes Embedded Environment State"
+      ]
+    }
+  ],
+  "db_iterations": [
+    {
+      "iteration": 1,
+      "action": {
+        "tool": "move",
+        "parameters": {
+          "direction": "Up"
+        }
+      },
+      "action_result": "Result: BLOCKED. Wall at (2, 1). Position: (2, 2).",
+      "score": 0.0,
+      "timestamp": "2026-09-20T14:33:50.112941"
+    },
+    {
+      "iteration": 2,
+      "action": {
+        "tool": "move",
+        "parameters": {
+          "direction": "Down"
+        }
+      },
+      "action_result": "Result: SAFE. Position: (2, 3). Moves used: 2/30.",
+      "score": -2.0,
+      "timestamp": "2026-09-20T14:35:19.627923"
+    },
+    {
+      "iteration": 3,
+      "action": {
+        "tool": "move",
+        "parameters": {
+          "direction": "Right"
+        }
+      },
+      "action_result": "Result: SAFE. Position: (3, 3). Moves used: 3/30.",
+      "score": -1.0,
+      "timestamp": "2026-09-20T14:37:56.167907"
+    },
+    {
+      "iteration": 4,
+      "action": {
+        "tool": "move",
+        "parameters": {
+          "direction": "Right"
+        }
+      },
+      "action_result": "Result: SAFE. Position: (4, 3). Moves used: 4/30.",
+      "score": 0.0,
+      "timestamp": "2026-09-20T14:39:18.908636"
+    },
+    {
+      "iteration": 5,
+      "action": {
+        "tool": "move",
+        "parameters": {
+          "direction": "Down"
+        }
+      },
+      "action_result": "Result: EXIT FOUND. Position: (4, 4). Moves used: 5/30.",
+      "score": 1.0,
+      "timestamp": "2026-09-20T14:40:18.950390"
+    }
+  ]
+}

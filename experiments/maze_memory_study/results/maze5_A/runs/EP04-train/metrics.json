@@ -1,0 +1,274 @@
+{
+  "episode": 4,
+  "episode_label": "EP04-train",
+  "phase": "OFF",
+  "experiment": "A",
+  "tag": "maze5v3",
+  "maze_size": 5,
+  "maze_seed": 1004,
+  "key_door": false,
+  "traps": 0,
+  "budget": 30,
+  "task_id": "231bf798-799c-4e80-a789-81ae64bc3366",
+  "model": "deepseek-v4.1-flash",
+  "reasoning_effort": "max",
+  "started_at": "2026-09-20T14:43:32.280544+00:00",
+  "ended_at": "2026-09-20T14:54:18.169150+00:00",
+  "duration_s": 645.89,
+  "error": null,
+  "completion_status": "completed",
+  "success": true,
+  "iterations_used": 5,
+  "llm": {
+    "calls": 35,
+    "ok": 35,
+    "failed": 0,
+    "empty_content": 0,
+    "call_time_s": 616.086,
+    "avg_latency_s": 17.602,
+    "max_latency_s": 42.14,
+    "prompt_tokens": 49966,
+    "completion_tokens": 131716,
+    "reasoning_tokens": 95524,
+    "total_tokens": 181682,
+    "prompt_chars": 186427,
+    "models": {
+      "deepseek-v4.1-flash": 35
+    },
+    "call_types": {
+      "Task Description": 10,
+      "Iteration": 5,
+      "Please evaluate the following action and": 5,
+      "Extract learnings from the following epi": 5,
+      "Current Known Rules": 5,
+      "Evaluate the current strategy and recomm": 5
+    }
+  },
+  "http": {
+    "requests": 35,
+    "statuses": {
+      "200": 35
+    },
+    "retries_429": 0,
+    "errors": 0
+  },
+  "env": {
+    "maze_size": 5,
+    "maze_seed": 1004,
+    "optimal_moves": 4,
+    "success": true,
+    "failed_budget": false,
+    "steps": 5,
+    "moves_used": 5,
+    "penalty_moves": 0,
+    "invalid_moves": 1,
+    "repeated_moves": 0,
+    "trap_activations": 0,
+    "cells_visited": 5,
+    "cells_seen": 21,
+    "key_collected": false,
+    "door_opened": false,
+    "final_position": [
+      4,
+      4
+    ],
+    "reward_total": 102.0
+  },
+  "derived": {
+    "path_efficiency": 0.8,
+    "exploration_efficiency": 0.8,
+    "excess_moves_over_optimal": 1,
+    "successful": true
+  },
+  "memory": {
+    "retrieval_calls": 0,
+    "retrieved_total": 0,
+    "retrieved_mean_per_iteration": 0.0,
+    "iterations_with_memory": 0,
+    "avg_similarity": null,
+    "writes_insert": 103,
+    "writes_merge": 0,
+    "store_calls": 103,
+    "points_before": 260,
+    "points_after": 363,
+    "embed_calls": 103,
+    "embed_time_s": 26.672
+  },
+  "agent": {
+    "learnings_created": 25,
+    "rule_updates": 5,
+    "strategy_changes": 2,
+    "snapshots": 0,
+    "synthesis_events": 1,
+    "synthesis_units": 103,
+    "synthesis_stored": 103,
+    "known_rules_final": 4,
+    "db_iterations": 5
+  },
+  "maze_map": {
+    "size": 5,
+    "grid": [
+      "#####",
+      "#.#.#",
+      "#...#",
+      "#...#",
+      "#####"
+    ],
+    "start": [
+      2,
+      2
+    ],
+    "exit": [
+      4,
+      4
+    ],
+    "key": null,
+    "door": null,
+    "traps": [],
+    "optimal_moves": 4
+  },
+  "per_iteration": [
+    {
+      "iteration": 1,
+      "score": 0.0,
+      "success": false,
+      "reward": -2.0,
+      "result": "Result: BLOCKED. Wall at (2, 1). Position: (2, 2).",
+      "error": null,
+      "evaluation": {
+        "success": null,
+        "mistake": "Misinterpreted the coordinate convention for 'Up'. From (2,2), Up moves to (2,1), not (2,3). The open cell (2,3) is Down from the current position.",
+        "discovery": "There is a wall immediately above the start at (2,1). Also, a BLOCKED move appears not to consume a move or increment invalid moves in the displayed state."
+      },
+      "learnings": 6,
+      "tool": "move",
+      "direction": "Up"
+    },
+    {
+      "iteration": 2,
+      "score": -2.0,
+      "success": true,
+      "reward": 1.0,
+      "result": "Result: SAFE. Position: (2, 3). Moves used: 2/30.",
+      "error": null,
+      "evaluation": {
+        "success": null,
+        "mistake": "None",
+        "discovery": "The static display map is reliable: a '.' cell (row 3, col 2) was indeed safe to enter, and the move executed exactly as predicted (position (2,3), moves 1\u21922). The map can be trusted for planning know"
+      },
+      "learnings": 5,
+      "tool": "move",
+      "direction": "Down"
+    },
+    {
+      "iteration": 3,
+      "score": -1.0,
+      "success": true,
+      "reward": 1.0,
+      "result": "Result: SAFE. Position: (3, 3). Moves used: 3/30.",
+      "error": null,
+      "evaluation": {
+        "success": null,
+        "mistake": "None",
+        "discovery": "Moving Right from (2,3) to (3,3) is safe. The agent advanced to (3,3) and used 3/30 moves, likely expanding known reachable space around (3,3), possibly revealing (4,3)."
+      },
+      "learnings": 4,
+      "tool": "move",
+      "direction": "Right"
+    },
+    {
+      "iteration": 4,
+      "score": 0.0,
+      "success": true,
+      "reward": 1.0,
+      "result": "Result: SAFE. Position: (3, 4). Moves used: 4/30.",
+      "error": null,
+      "evaluation": {
+        "success": null,
+        "mistake": "None",
+        "discovery": "The cell at (3,4) is confirmed safe, and the agent is now directly adjacent to the exit E at (4,4). The '.' pattern on the map continues to hold (no hidden trap in this cell), so a single Right move s"
+      },
+      "learnings": 5,
+      "tool": "move",
+      "direction": "Down"
+    },
+    {
+      "iteration": 5,
+      "score": 1.0,
+      "success": true,
+      "reward": 101.0,
+      "result": "Result: EXIT FOUND. Position: (4, 4). Moves used: 5/30.",
+      "error": null,
+      "evaluation": {
+        "success": null,
+        "mistake": "None",
+        "discovery": "The exit cell is located at (4,4) and is directly reachable from (3,4) by moving Right; the maze is solvable in 5 moves."
+      },
+      "learnings": 5,
+      "tool": "move",
+      "direction": "Right"
+    }
+  ],
+  "db_iterations": [
+    {
+      "iteration": 1,
+      "action": {
+        "tool": "move",
+        "parameters": {
+          "direction": "Up"
+        }
+      },
+      "action_result": "Result: BLOCKED. Wall at (2, 1). Position: (2, 2).",
+      "score": 0.0,
+      "timestamp": "2026-09-20T14:44:46.393442"
+    },
+    {
+      "iteration": 2,
+      "action": {
+        "tool": "move",
+        "parameters": {
+          "direction": "Down"
+        }
+      },
+      "action_result": "Result: SAFE. Position: (2, 3). Moves used: 2/30.",
+      "score": -2.0,
+      "timestamp": "2026-09-20T14:45:59.417176"
+    },
+    {
+      "iteration": 3,
+      "action": {
+        "tool": "move",
+        "parameters": {
+          "direction": "Right"
+        }
+      },
+      "action_result": "Result: SAFE. Position: (3, 3). Moves used: 3/30.",
+      "score": -1.0,
+      "timestamp": "2026-09-20T14:47:47.828317"
+    },
+    {
+      "iteration": 4,
+      "action": {
+        "tool": "move",
+        "parameters": {
+          "direction": "Down"
+        }
+      },
+      "action_result": "Result: SAFE. Position: (3, 4). Moves used: 4/30.",
+      "score": 0.0,
+      "timestamp": "2026-09-20T14:49:15.214374"
+    },
+    {
+      "iteration": 5,
+      "action": {
+        "tool": "move",
+        "parameters": {
+          "direction": "Right"
+        }
+      },
+      "action_result": "Result: EXIT FOUND. Position: (4, 4). Moves used: 5/30.",
+      "score": 1.0,
+      "timestamp": "2026-09-20T14:50:17.515882"
+    }
+  ]
+}

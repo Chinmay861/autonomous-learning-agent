@@ -1,0 +1,333 @@
+{
+  "run_label": "OFF-1",
+  "phase": "OFF",
+  "tag": "pilot",
+  "task_id": "284e1a90-a9cb-452a-8506-649d0c31730d",
+  "surfacing_fix": false,
+  "model": "qwen/qwen3.8-27b",
+  "temperature": 0.7,
+  "max_iterations": 8,
+  "top_k": 5,
+  "min_similarity": 0.65,
+  "started_at": "2026-09-20T12:24:02.880758+00:00",
+  "ended_at": "2026-09-20T12:32:32.026330+00:00",
+  "duration_s": 509.15,
+  "error": null,
+  "completion_status": "completed",
+  "task_status": "COMPLETED",
+  "success": false,
+  "iterations_used": 8,
+  "llm": {
+    "calls": 51,
+    "ok": 51,
+    "failed": 0,
+    "call_time_s": 508.396,
+    "avg_latency_s": 9.969,
+    "max_latency_s": 18.125,
+    "prompt_tokens": 84146,
+    "completion_tokens": 28226,
+    "total_tokens": 112372,
+    "prompt_chars": 255583,
+    "models": {
+      "qwen/qwen3.8-27b": 51
+    },
+    "call_types": {
+      "Task Description": 10,
+      "Iteration": 9,
+      "Please evaluate the following action and": 8,
+      "Extract learnings from the following epi": 8,
+      "Current Known Rules": 8,
+      "Evaluate the current strategy and recomm": 8
+    }
+  },
+  "http": {
+    "requests": 154,
+    "statuses": {
+      "200": 42,
+      "429": 112
+    },
+    "retries_429": 112,
+    "errors": 0
+  },
+  "memory": {
+    "retrieval_calls": 0,
+    "retrieved_total": 0,
+    "retrieved_mean": 0.0,
+    "retrieved_max": 0,
+    "iterations_with_memory": 0,
+    "avg_similarity": null,
+    "max_similarity": null,
+    "unique_ids_retrieved": 0,
+    "retrieval_time_s": 0,
+    "writes_insert": 0,
+    "writes_merge": 0,
+    "store_calls": 0,
+    "points_before": 0,
+    "points_after": 0,
+    "embed_calls": 0,
+    "embed_texts": 0,
+    "embed_time_s": 0
+  },
+  "agent": {
+    "learnings_created": 22,
+    "rule_updates": 8,
+    "strategy_changes": 1,
+    "snapshots": 0,
+    "synthesis_events": 0,
+    "synthesis_units": 0,
+    "synthesis_stored": 0,
+    "blocked_obstacle": 2,
+    "blocked_boundary": 0,
+    "invalid_actions": 0,
+    "db_iterations": 8,
+    "known_rules_final": 6
+  },
+  "env_final": {
+    "x": 5,
+    "y": 3,
+    "goal": [
+      15,
+      15
+    ],
+    "found_treasure": false,
+    "step_count": 8,
+    "score": 12.0,
+    "known_obstacles": [
+      [
+        4,
+        2
+      ],
+      [
+        2,
+        2
+      ]
+    ]
+  },
+  "per_iteration": [
+    {
+      "iteration": 1,
+      "score": 0.0,
+      "success": true,
+      "reward": 2.0,
+      "result": "Safe - move was valid. Moved from (1, 1) to (2, 1). Remaining distance: 27.",
+      "error": null,
+      "evaluation": {
+        "success": null,
+        "mistake": "None",
+        "discovery": "The cell at (2,1) is traversable and safe (an open path)."
+      },
+      "learnings": 2,
+      "tool": "move",
+      "direction": "Right"
+    },
+    {
+      "iteration": 2,
+      "score": 2.0,
+      "success": false,
+      "reward": -3.0,
+      "result": "Blocked - an obstacle is present at (2, 2). Cannot enter cell. Position remains (2, 1).",
+      "error": null,
+      "evaluation": {
+        "success": null,
+        "mistake": "Assumed the path Up was clear based on lack of prior knowledge, failing to account for potential obstacles in an unknown environment.",
+        "discovery": "There is an obstacle at position (2, 2)."
+      },
+      "learnings": 3,
+      "tool": "move",
+      "direction": "Up"
+    },
+    {
+      "iteration": 3,
+      "score": 2.0,
+      "success": true,
+      "reward": 2.0,
+      "result": "Safe - move was valid. Moved from (2, 1) to (3, 1). Remaining distance: 26.",
+      "error": null,
+      "evaluation": {
+        "success": null,
+        "mistake": "None",
+        "discovery": "Cell (3,1) is free of obstacles and safe to occupy."
+      },
+      "learnings": 2,
+      "tool": "move",
+      "direction": "Right"
+    },
+    {
+      "iteration": 4,
+      "score": 4.0,
+      "success": true,
+      "reward": 2.0,
+      "result": "Safe - move was valid. Moved from (3, 1) to (3, 2). Remaining distance: 25.",
+      "error": null,
+      "evaluation": {
+        "success": null,
+        "mistake": "None",
+        "discovery": "The cell at (3,2) is safe and free of obstacles, allowing safe movement upwards."
+      },
+      "learnings": 5,
+      "tool": "move",
+      "direction": "Up"
+    },
+    {
+      "iteration": 5,
+      "score": 6.0,
+      "success": false,
+      "reward": -3.0,
+      "result": "Blocked - an obstacle is present at (4, 2). Cannot enter cell. Position remains (3, 2).",
+      "error": null,
+      "evaluation": {
+        "success": null,
+        "mistake": "The agent attempted to move into an unexplored cell (4,2) without prior knowledge of its status, leading to a collision with an obstacle.",
+        "discovery": "Cell (4, 2) is an obstacle and cannot be traversed."
+      },
+      "learnings": 3,
+      "tool": "move",
+      "direction": "Right"
+    },
+    {
+      "iteration": 6,
+      "score": 6.0,
+      "success": true,
+      "reward": 2.0,
+      "result": "Safe - move was valid. Moved from (3, 2) to (3, 3). Remaining distance: 24.",
+      "error": null,
+      "evaluation": {
+        "success": null,
+        "mistake": "None",
+        "discovery": "Confirmed that cell (3,3) is free of obstacles and that moving Up from (3,2) reduces the Manhattan distance to the target."
+      },
+      "learnings": 5,
+      "tool": "move",
+      "direction": "Up"
+    },
+    {
+      "iteration": 7,
+      "score": 8.0,
+      "success": true,
+      "reward": 2.0,
+      "result": "Safe - move was valid. Moved from (3, 3) to (4, 3). Remaining distance: 23.",
+      "error": null,
+      "evaluation": {
+        "success": null,
+        "mistake": "None",
+        "discovery": "The cell (4,3) is free of obstacles and moving right from (3,3) is a valid, safe move."
+      },
+      "learnings": 2,
+      "tool": "move",
+      "direction": "Right"
+    },
+    {
+      "iteration": 8,
+      "score": 10.0,
+      "success": true,
+      "reward": 2.0,
+      "result": "Safe - move was valid. Moved from (4, 3) to (5, 3). Remaining distance: 22.",
+      "error": null,
+      "evaluation": {
+        "success": null,
+        "mistake": "None",
+        "discovery": "Cell (5,3) is traversable; moving right from (4,3) is safe and reduces Manhattan distance to the target."
+      },
+      "tool": "move",
+      "direction": "Right"
+    }
+  ],
+  "db_iterations": [
+    {
+      "iteration": 1,
+      "action": {
+        "tool": "move",
+        "parameters": {
+          "direction": "Right"
+        }
+      },
+      "action_result": "Safe - move was valid. Moved from (1, 1) to (2, 1). Remaining distance: 27.",
+      "score": 0.0,
+      "timestamp": "2026-09-20T12:24:46.049074"
+    },
+    {
+      "iteration": 2,
+      "action": {
+        "tool": "move",
+        "parameters": {
+          "direction": "Up"
+        }
+      },
+      "action_result": "Blocked - an obstacle is present at (2, 2). Cannot enter cell. Position remains (2, 1).",
+      "score": 2.0,
+      "timestamp": "2026-09-20T12:25:34.761681"
+    },
+    {
+      "iteration": 3,
+      "action": {
+        "tool": "move",
+        "parameters": {
+          "direction": "Right"
+        }
+      },
+      "action_result": "Safe - move was valid. Moved from (2, 1) to (3, 1). Remaining distance: 26.",
+      "score": 2.0,
+      "timestamp": "2026-09-20T12:26:17.061008"
+    },
+    {
+      "iteration": 4,
+      "action": {
+        "tool": "move",
+        "parameters": {
+          "direction": "Up"
+        }
+      },
+      "action_result": "Safe - move was valid. Moved from (3, 1) to (3, 2). Remaining distance: 25.",
+      "score": 4.0,
+      "timestamp": "2026-09-20T12:27:12.188450"
+    },
+    {
+      "iteration": 5,
+      "action": {
+        "tool": "move",
+        "parameters": {
+          "direction": "Right"
+        }
+      },
+      "action_result": "Blocked - an obstacle is present at (4, 2). Cannot enter cell. Position remains (3, 2).",
+      "score": 6.0,
+      "timestamp": "2026-09-20T12:28:01.947649"
+    },
+    {
+      "iteration": 6,
+      "action": {
+        "tool": "move",
+        "parameters": {
+          "direction": "Up"
+        }
+      },
+      "action_result": "Safe - move was valid. Moved from (3, 2) to (3, 3). Remaining distance: 24.",
+      "score": 6.0,
+      "timestamp": "2026-09-20T12:29:06.766052"
+    },
+    {
+      "iteration": 7,
+      "action": {
+        "tool": "move",
+        "parameters": {
+          "direction": "Right"
+        }
+      },
+      "action_result": "Safe - move was valid. Moved from (3, 3) to (4, 3). Remaining distance: 23.",
+      "score": 8.0,
+      "timestamp": "2026-09-20T12:30:06.933819"
+    },
+    {
+      "iteration": 8,
+      "action": {
+        "tool": "move",
+        "parameters": {
+          "direction": "Right"
+        }
+      },
+      "action_result": "Safe - move was valid. Moved from (4, 3) to (5, 3). Remaining distance: 22.",
+      "score": 10.0,
+      "timestamp": "2026-09-20T12:31:04.270378"
+    }
+  ]
+}

@@ -1,0 +1,296 @@
+{
+  "experiment": "B",
+  "phase": "ON",
+  "tag": "maze5v3",
+  "task_title": "Persistent Maze Learning Benchmark",
+  "task_description": "Persistent Maze Learning Benchmark. Solve grid mazes by interacting one action at a time.\n\nEnvironment: mazes of size 5x5, 6x6 or 7x7 containing:\nS = starting position, E = exit, . = open cell, # = wall, K = key, D = locked door, T = trap.\nThe agent initially knows the rules but does not know the maze layout.\n\nRules:\n- The agent starts at S and must reach E.\n- The agent can move only Up, Down, Left or Right. Diagonal movement is not allowed.\n- The agent cannot move through #.\n- The agent must collect K before passing through D.\n- Entering T is allowed but adds a penalty of 5 moves.\n- The agent receives feedback after every action.\n- The agent has a limited number of moves per episode.\n- The agent must maintain knowledge of: visited cells, blocked cells, successful moves, failed moves, dead ends, trap locations, key locations, door locations, successful strategies, failed strategies, mistakes and their causes.\n- The agent should avoid repeating actions it has learned are unsuccessful.\n- The agent should record successful and failed strategies, environmental patterns, discovered hazards, useful exploration techniques, and mistakes with their causes.\n- The agent is allowed to create its own strategy. The solution path is never provided.\n",
+  "model": "deepseek-v4.1-flash",
+  "provider": "zen",
+  "reasoning_effort": "max",
+  "synthesis_reasoning_effort": "low",
+  "temperature": 0.7,
+  "training_mazes": [
+    [
+      5,
+      1001,
+      false,
+      0
+    ],
+    [
+      5,
+      1002,
+      false,
+      0
+    ],
+    [
+      5,
+      1003,
+      false,
+      0
+    ],
+    [
+      5,
+      1004,
+      false,
+      0
+    ],
+    [
+      5,
+      1005,
+      false,
+      0
+    ],
+    [
+      6,
+      2001,
+      true,
+      1
+    ],
+    [
+      6,
+      2002,
+      true,
+      1
+    ],
+    [
+      6,
+      2003,
+      true,
+      2
+    ],
+    [
+      6,
+      2004,
+      true,
+      2
+    ],
+    [
+      6,
+      2005,
+      true,
+      3
+    ],
+    [
+      7,
+      3001,
+      true,
+      2
+    ],
+    [
+      7,
+      3002,
+      true,
+      2
+    ],
+    [
+      7,
+      3003,
+      true,
+      3
+    ],
+    [
+      7,
+      3004,
+      true,
+      3
+    ],
+    [
+      7,
+      3005,
+      true,
+      3
+    ]
+  ],
+  "eval_mazes": [
+    [
+      5,
+      9001,
+      false,
+      0
+    ],
+    [
+      6,
+      9002,
+      true,
+      2
+    ],
+    [
+      7,
+      9003,
+      true,
+      3
+    ]
+  ],
+  "budgets": {
+    "5": 30,
+    "6": 40,
+    "7": 55
+  },
+  "db": "sqlite+aiosqlite:///./storage/study_b_v3.db",
+  "storage_dir": "./storage/study_b_v3",
+  "episodes": [
+    {
+      "index": 1,
+      "label": "EP01-train",
+      "phase": "ON",
+      "size": 5,
+      "seed": 1001,
+      "key_door": false,
+      "traps": 0
+    },
+    {
+      "index": 2,
+      "label": "EP02-train",
+      "phase": "ON",
+      "size": 5,
+      "seed": 1002,
+      "key_door": false,
+      "traps": 0
+    },
+    {
+      "index": 3,
+      "label": "EP03-train",
+      "phase": "ON",
+      "size": 5,
+      "seed": 1003,
+      "key_door": false,
+      "traps": 0
+    },
+    {
+      "index": 4,
+      "label": "EP04-train",
+      "phase": "ON",
+      "size": 5,
+      "seed": 1004,
+      "key_door": false,
+      "traps": 0
+    },
+    {
+      "index": 5,
+      "label": "EP05-train",
+      "phase": "ON",
+      "size": 5,
+      "seed": 1005,
+      "key_door": false,
+      "traps": 0
+    },
+    {
+      "index": 6,
+      "label": "EP06-train",
+      "phase": "ON",
+      "size": 6,
+      "seed": 2001,
+      "key_door": true,
+      "traps": 1
+    },
+    {
+      "index": 7,
+      "label": "EP07-train",
+      "phase": "ON",
+      "size": 6,
+      "seed": 2002,
+      "key_door": true,
+      "traps": 1
+    },
+    {
+      "index": 8,
+      "label": "EP08-train",
+      "phase": "ON",
+      "size": 6,
+      "seed": 2003,
+      "key_door": true,
+      "traps": 2
+    },
+    {
+      "index": 9,
+      "label": "EP09-train",
+      "phase": "ON",
+      "size": 6,
+      "seed": 2004,
+      "key_door": true,
+      "traps": 2
+    },
+    {
+      "index": 10,
+      "label": "EP10-train",
+      "phase": "ON",
+      "size": 6,
+      "seed": 2005,
+      "key_door": true,
+      "traps": 3
+    },
+    {
+      "index": 11,
+      "label": "EP11-train",
+      "phase": "ON",
+      "size": 7,
+      "seed": 3001,
+      "key_door": true,
+      "traps": 2
+    },
+    {
+      "index": 12,
+      "label": "EP12-train",
+      "phase": "ON",
+      "size": 7,
+      "seed": 3002,
+      "key_door": true,
+      "traps": 2
+    },
+    {
+      "index": 13,
+      "label": "EP13-train",
+      "phase": "ON",
+      "size": 7,
+      "seed": 3003,
+      "key_door": true,
+      "traps": 3
+    },
+    {
+      "index": 14,
+      "label": "EP14-train",
+      "phase": "ON",
+      "size": 7,
+      "seed": 3004,
+      "key_door": true,
+      "traps": 3
+    },
+    {
+      "index": 15,
+      "label": "EP15-train",
+      "phase": "ON",
+      "size": 7,
+      "seed": 3005,
+      "key_door": true,
+      "traps": 3
+    },
+    {
+      "index": 16,
+      "label": "EP16-eval",
+      "phase": "ON",
+      "size": 5,
+      "seed": 9001,
+      "key_door": false,
+      "traps": 0
+    },
+    {
+      "index": 17,
+      "label": "EP17-eval",
+      "phase": "ON",
+      "size": 6,
+      "seed": 9002,
+      "key_door": true,
+      "traps": 2
+    },
+    {
+      "index": 18,
+      "label": "EP18-eval",
+      "phase": "ON",
+      "size": 7,
+      "seed": 9003,
+      "key_door": true,
+      "traps": 3
+    }
+  ],
+  "started_at": "2026-09-20T14:00:10.052890+00:00"
+}

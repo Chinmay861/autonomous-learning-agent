@@ -1,0 +1,19 @@
+{
+  "tag": "pilot-zen",
+  "task_title": "Adaptive Maze Intelligence Benchmark",
+  "task_description": "Objective: Build an agent that learns to solve a series of increasingly difficult grid-world mazes. The agent must discover the environment, experiment with strategies, remember useful knowledge, and improve its performance across multiple independent runs.\n\nEnvironment: Each maze is a 15x15 grid containing:\nS = starting position, E = exit, # = wall, . = open path, K = key, D = locked door, T = trap, ? = unknown cell.\nThe agent initially knows only the rules, not the maze layout.\n\nRules:\n- The agent starts at S.\n- It can move up, down, left, or right.\n- The agent cannot move through walls.\n- Some mazes contain a key and locked door: the key must be collected before the door can be opened.\n- Some cells contain traps: entering a trap costs 5 additional moves.\n- The agent receives feedback after every action.\n- The agent has a limited number of actions per episode.\n- The agent should record: successful strategies, failed strategies, environmental patterns, locations/types of discovered hazards, useful exploration techniques, mistakes and their causes.\n- The agent is allowed to create its own strategy.\n- The solution path is never provided to the agent.\n",
+  "model": "deepseek-v4.1-flash",
+  "temperature": 0.7,
+  "max_iterations": 8,
+  "snapshot_interval": 30,
+  "synthesis_interval": 100,
+  "top_k": 5,
+  "min_similarity": 0.65,
+  "runs_off": 1,
+  "runs_on": 0,
+  "runs_fix": 0,
+  "provider": "zen",
+  "endpoint": "https://opencode.ai/zen/go/v1",
+  "reasoning_effort": "max",
+  "started_at": "2026-09-20T12:49:27.854860+00:00"
+}

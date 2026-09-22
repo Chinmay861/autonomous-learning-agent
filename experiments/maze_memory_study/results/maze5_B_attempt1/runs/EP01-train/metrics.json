@@ -1,0 +1,247 @@
+{
+  "episode": 1,
+  "episode_label": "EP01-train",
+  "phase": "ON",
+  "experiment": "B",
+  "tag": "maze5",
+  "maze_size": 5,
+  "maze_seed": 1001,
+  "key_door": false,
+  "traps": 0,
+  "budget": 30,
+  "task_id": "10c9ddb0-ecc9-49b5-b213-cf8e50c8cd7d",
+  "model": "deepseek-v4.1-flash",
+  "reasoning_effort": "max",
+  "started_at": "2026-09-20T13:16:23.569030+00:00",
+  "ended_at": "2026-09-20T13:31:36.979676+00:00",
+  "duration_s": 913.41,
+  "error": null,
+  "completion_status": "completed",
+  "success": true,
+  "iterations_used": 4,
+  "llm": {
+    "calls": 28,
+    "ok": 27,
+    "failed": 1,
+    "empty_content": 0,
+    "call_time_s": 874.443,
+    "avg_latency_s": 32.387,
+    "max_latency_s": 193.225,
+    "prompt_tokens": 38160,
+    "completion_tokens": 187091,
+    "reasoning_tokens": 150139,
+    "total_tokens": 225251,
+    "prompt_chars": 140806,
+    "models": {
+      "deepseek-v4.1-flash": 27
+    },
+    "call_types": {
+      "Task Description": 7,
+      "Iteration": 4,
+      "Please evaluate the following action and": 4,
+      "Extract learnings from the following epi": 4,
+      "Current Known Rules": 4,
+      "Evaluate the current strategy and recomm": 4
+    }
+  },
+  "http": {
+    "requests": 28,
+    "statuses": {
+      "200": 27,
+      "500": 1
+    },
+    "retries_429": 0,
+    "errors": 0
+  },
+  "env": {
+    "maze_size": 5,
+    "maze_seed": 1001,
+    "optimal_moves": 4,
+    "success": true,
+    "failed_budget": false,
+    "steps": 4,
+    "moves_used": 4,
+    "penalty_moves": 0,
+    "invalid_moves": 0,
+    "repeated_moves": 0,
+    "trap_activations": 0,
+    "cells_visited": 5,
+    "cells_seen": 21,
+    "key_collected": false,
+    "door_opened": false,
+    "final_position": [
+      4,
+      4
+    ],
+    "reward_total": 104.0
+  },
+  "derived": {
+    "path_efficiency": 1.0,
+    "exploration_efficiency": 1.0,
+    "excess_moves_over_optimal": 0,
+    "successful": true
+  },
+  "memory": {
+    "retrieval_calls": 4,
+    "retrieved_total": 0,
+    "retrieved_mean_per_iteration": 0.0,
+    "iterations_with_memory": 0,
+    "avg_similarity": null,
+    "writes_insert": 0,
+    "writes_merge": 0,
+    "store_calls": 0,
+    "points_before": 0,
+    "points_after": 0,
+    "embed_calls": 4,
+    "embed_time_s": 1.171
+  },
+  "agent": {
+    "learnings_created": 16,
+    "rule_updates": 4,
+    "strategy_changes": 1,
+    "snapshots": 0,
+    "synthesis_events": 0,
+    "synthesis_units": 0,
+    "synthesis_stored": 0,
+    "known_rules_final": 6,
+    "db_iterations": 4
+  },
+  "maze_map": {
+    "size": 5,
+    "grid": [
+      "#####",
+      "#...#",
+      "##..#",
+      "#...#",
+      "#####"
+    ],
+    "start": [
+      2,
+      2
+    ],
+    "exit": [
+      4,
+      4
+    ],
+    "key": null,
+    "door": null,
+    "traps": [],
+    "optimal_moves": 4
+  },
+  "per_iteration": [
+    {
+      "iteration": 1,
+      "score": 0.0,
+      "success": true,
+      "reward": 1.0,
+      "result": "Result: SAFE. Position: (3, 2). Moves used: 1/30.",
+      "error": null,
+      "evaluation": {
+        "success": null,
+        "mistake": "None",
+        "discovery": "Moving Right from the start is safe and reaches (3,2). Based on the displayed maze, Up, Down, and Left from (2,2) appear to be walls, so Right was likely the only immediately safe move."
+      },
+      "learnings": 5,
+      "tool": "move",
+      "direction": "Right"
+    },
+    {
+      "iteration": 2,
+      "score": 1.0,
+      "success": true,
+      "reward": 1.0,
+      "result": "Result: SAFE. Position: (4, 2). Moves used: 2/30.",
+      "error": null,
+      "evaluation": {
+        "success": null,
+        "mistake": "None",
+        "discovery": "Moving into the known open cell (4,2) was safe, and (5,2) remains the next unknown frontier to the right."
+      },
+      "learnings": 5,
+      "tool": "move",
+      "direction": "Right"
+    },
+    {
+      "iteration": 3,
+      "score": 2.0,
+      "success": true,
+      "reward": 1.0,
+      "result": "Result: SAFE. Position: (4, 3). Moves used: 3/30.",
+      "error": null,
+      "evaluation": {
+        "success": null,
+        "mistake": "None",
+        "discovery": "Moving Down increased the second coordinate from y=2 to y=3 (position (4,2) \u2192 (4,3)), confirming that in the reported (x, y) position, Down increases y (y behaves as a top-down row index). This empiri"
+      },
+      "learnings": 3,
+      "tool": "move",
+      "direction": "Down"
+    },
+    {
+      "iteration": 4,
+      "score": 3.0,
+      "success": true,
+      "reward": 101.0,
+      "result": "Result: EXIT FOUND. Position: (4, 4). Moves used: 4/30.",
+      "error": null,
+      "evaluation": {
+        "success": null,
+        "mistake": "None",
+        "discovery": "The exit at (4,4) can be reached directly from (4,3) by moving Down, with no key required, completing the maze in 4 moves."
+      },
+      "learnings": 3,
+      "tool": "move",
+      "direction": "Down"
+    }
+  ],
+  "db_iterations": [
+    {
+      "iteration": 1,
+      "action": {
+        "tool": "move",
+        "parameters": {
+          "direction": "Right"
+        }
+      },
+      "action_result": "Result: SAFE. Position: (3, 2). Moves used: 1/30.",
+      "score": 0.0,
+      "timestamp": "2026-09-20T13:17:41.541861"
+    },
+    {
+      "iteration": 2,
+      "action": {
+        "tool": "move",
+        "parameters": {
+          "direction": "Right"
+        }
+      },
+      "action_result": "Result: SAFE. Position: (4, 2). Moves used: 2/30.",
+      "score": 1.0,
+      "timestamp": "2026-09-20T13:18:47.923636"
+    },
+    {
+      "iteration": 3,
+      "action": {
+        "tool": "move",
+        "parameters": {
+          "direction": "Down"
+        }
+      },
+      "action_result": "Result: SAFE. Position: (4, 3). Moves used: 3/30.",
+      "score": 2.0,
+      "timestamp": "2026-09-20T13:20:51.397493"
+    },
+    {
+      "iteration": 4,
+      "action": {
+        "tool": "move",
+        "parameters": {
+          "direction": "Down"
+        }
+      },
+      "action_result": "Result: EXIT FOUND. Position: (4, 4). Moves used: 4/30.",
+      "score": 3.0,
+      "timestamp": "2026-09-20T13:22:31.493665"
+    }
+  ]
+}

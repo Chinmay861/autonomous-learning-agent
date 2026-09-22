@@ -1,0 +1,300 @@
+{
+  "episode": 2,
+  "episode_label": "EP02-train",
+  "phase": "ON",
+  "experiment": "B",
+  "tag": "maze5v3",
+  "maze_size": 5,
+  "maze_seed": 1002,
+  "key_door": false,
+  "traps": 0,
+  "budget": 30,
+  "task_id": "0aa1626a-bcca-4b6e-a548-05cb9ceb0eed",
+  "model": "deepseek-v4.1-flash",
+  "reasoning_effort": "max",
+  "started_at": "2026-09-20T14:09:36.364038+00:00",
+  "ended_at": "2026-09-20T14:24:11.919653+00:00",
+  "duration_s": 875.56,
+  "error": null,
+  "completion_status": "completed",
+  "success": true,
+  "iterations_used": 5,
+  "llm": {
+    "calls": 35,
+    "ok": 35,
+    "failed": 0,
+    "empty_content": 0,
+    "call_time_s": 792.854,
+    "avg_latency_s": 22.653,
+    "max_latency_s": 84.036,
+    "prompt_tokens": 51396,
+    "completion_tokens": 152522,
+    "reasoning_tokens": 122796,
+    "total_tokens": 203918,
+    "prompt_chars": 191547,
+    "models": {
+      "deepseek-v4.1-flash": 35
+    },
+    "call_types": {
+      "Task Description": 10,
+      "Iteration": 5,
+      "Please evaluate the following action and": 5,
+      "Extract learnings from the following epi": 5,
+      "Current Known Rules": 5,
+      "Evaluate the current strategy and recomm": 5
+    }
+  },
+  "http": {
+    "requests": 36,
+    "statuses": {
+      "200": 35,
+      "500": 1
+    },
+    "retries_429": 0,
+    "errors": 0
+  },
+  "env": {
+    "maze_size": 5,
+    "maze_seed": 1002,
+    "optimal_moves": 4,
+    "success": true,
+    "failed_budget": false,
+    "steps": 5,
+    "moves_used": 5,
+    "penalty_moves": 0,
+    "invalid_moves": 1,
+    "repeated_moves": 0,
+    "trap_activations": 0,
+    "cells_visited": 5,
+    "cells_seen": 21,
+    "key_collected": false,
+    "door_opened": false,
+    "final_position": [
+      4,
+      4
+    ],
+    "reward_total": 102.0
+  },
+  "derived": {
+    "path_efficiency": 0.8,
+    "exploration_efficiency": 0.8,
+    "excess_moves_over_optimal": 1,
+    "successful": true
+  },
+  "memory": {
+    "retrieval_calls": 5,
+    "retrieved_total": 10,
+    "retrieved_mean_per_iteration": 2.0,
+    "iterations_with_memory": 5,
+    "avg_similarity": 0.699,
+    "writes_insert": 65,
+    "writes_merge": 0,
+    "store_calls": 65,
+    "points_before": 42,
+    "points_after": 107,
+    "embed_calls": 70,
+    "embed_time_s": 20.714
+  },
+  "agent": {
+    "learnings_created": 26,
+    "rule_updates": 5,
+    "strategy_changes": 1,
+    "snapshots": 0,
+    "synthesis_events": 1,
+    "synthesis_units": 65,
+    "synthesis_stored": 65,
+    "known_rules_final": 5,
+    "db_iterations": 5
+  },
+  "maze_map": {
+    "size": 5,
+    "grid": [
+      "#####",
+      "#...#",
+      "#.#.#",
+      "#...#",
+      "#####"
+    ],
+    "start": [
+      2,
+      2
+    ],
+    "exit": [
+      4,
+      4
+    ],
+    "key": null,
+    "door": null,
+    "traps": [],
+    "optimal_moves": 4
+  },
+  "per_iteration": [
+    {
+      "iteration": 1,
+      "score": 0.0,
+      "retrieved_count": 2,
+      "success": true,
+      "reward": 1.0,
+      "result": "Result: SAFE. Position: (3, 2). Moves used: 1/30.",
+      "error": null,
+      "evaluation": {
+        "success": null,
+        "mistake": "None",
+        "discovery": "Moving Right from the start S is safe, and cell (3,2) is a reachable open cell. This confirms at least one safe exit from S."
+      },
+      "learnings": 4,
+      "tool": "move",
+      "direction": "Right",
+      "retrieved_top": [
+        "Action Result Supersedes Embedded Environment State",
+        "Orthogonal movement only"
+      ]
+    },
+    {
+      "iteration": 2,
+      "score": 1.0,
+      "retrieved_count": 2,
+      "success": true,
+      "reward": 1.0,
+      "result": "Result: SAFE. Position: (4, 2). Moves used: 2/30.",
+      "error": null,
+      "evaluation": {
+        "success": null,
+        "mistake": "No action mistake. The hypothesis over-specified that new cells would be revealed, but the result did not confirm any reveal.",
+        "discovery": "Moving right from (3,2) is safe and reaches (4,2); the agent has used 2/30 moves and remains in exploring status."
+      },
+      "learnings": 5,
+      "tool": "move",
+      "direction": "Right",
+      "retrieved_top": [
+        "Action Result Supersedes Embedded Environment State",
+        "Orthogonal movement only"
+      ]
+    },
+    {
+      "iteration": 3,
+      "score": 2.0,
+      "retrieved_count": 2,
+      "success": false,
+      "reward": -2.0,
+      "result": "Result: BLOCKED. Wall at (4, 1). Position: (4, 2).",
+      "error": null,
+      "evaluation": {
+        "success": null,
+        "mistake": "Assumed Up increases y and would move from (4,2) to (4,3). In reality, Up from (4,2) is blocked by the wall at (4,1), so Up decreases y / row index in this environment.",
+        "discovery": "Up from (4,2) is blocked by a wall at (4,1). The blocked action did not change position, did not consume a move (still 2/30), and did not increment invalid moves."
+      },
+      "learnings": 6,
+      "tool": "move",
+      "direction": "Up",
+      "retrieved_top": [
+        "Action Result Supersedes Embedded Environment State",
+        "Orthogonal movement only"
+      ]
+    },
+    {
+      "iteration": 4,
+      "score": 0.0,
+      "retrieved_count": 2,
+      "success": true,
+      "reward": 1.0,
+      "result": "Result: SAFE. Position: (4, 3). Moves used: 4/30.",
+      "error": null,
+      "evaluation": {
+        "success": null,
+        "mistake": "None",
+        "discovery": "The downward corridor from (4,2) through (4,3) is confirmed safe; occupying an already-visited/visible '.' cell advances position and consumes a move but does NOT auto-reveal adjacent '?' cells (row 4"
+      },
+      "learnings": 5,
+      "tool": "move",
+      "direction": "Down",
+      "retrieved_top": [
+        "Action Result Supersedes Embedded Environment State",
+        "Orthogonal movement only"
+      ]
+    },
+    {
+      "iteration": 5,
+      "score": 1.0,
+      "retrieved_count": 2,
+      "success": true,
+      "reward": 101.0,
+      "result": "Result: EXIT FOUND. Position: (4, 4). Moves used: 5/30.",
+      "error": null,
+      "evaluation": {
+        "success": null,
+        "mistake": "None",
+        "discovery": "The exit 'E' at (4,4) is directly reachable from (4,3) without possessing the key; the door 'D' is therefore not a strict gate for reaching the exit (at least on this path). The episode terminates imm"
+      },
+      "learnings": 6,
+      "tool": "move",
+      "direction": "Down",
+      "retrieved_top": [
+        "Action Result Supersedes Embedded Environment State",
+        "Orthogonal movement only"
+      ]
+    }
+  ],
+  "db_iterations": [
+    {
+      "iteration": 1,
+      "action": {
+        "tool": "move",
+        "parameters": {
+          "direction": "Right"
+        }
+      },
+      "action_result": "Result: SAFE. Position: (3, 2). Moves used: 1/30.",
+      "score": 0.0,
+      "timestamp": "2026-09-20T14:10:44.764035"
+    },
+    {
+      "iteration": 2,
+      "action": {
+        "tool": "move",
+        "parameters": {
+          "direction": "Right"
+        }
+      },
+      "action_result": "Result: SAFE. Position: (4, 2). Moves used: 2/30.",
+      "score": 1.0,
+      "timestamp": "2026-09-20T14:12:10.720393"
+    },
+    {
+      "iteration": 3,
+      "action": {
+        "tool": "move",
+        "parameters": {
+          "direction": "Up"
+        }
+      },
+      "action_result": "Result: BLOCKED. Wall at (4, 1). Position: (4, 2).",
+      "score": 2.0,
+      "timestamp": "2026-09-20T14:13:44.439107"
+    },
+    {
+      "iteration": 4,
+      "action": {
+        "tool": "move",
+        "parameters": {
+          "direction": "Down"
+        }
+      },
+      "action_result": "Result: SAFE. Position: (4, 3). Moves used: 4/30.",
+      "score": 0.0,
+      "timestamp": "2026-09-20T14:16:29.548093"
+    },
+    {
+      "iteration": 5,
+      "action": {
+        "tool": "move",
+        "parameters": {
+          "direction": "Down"
+        }
+      },
+      "action_result": "Result: EXIT FOUND. Position: (4, 4). Moves used: 5/30.",
+      "score": 1.0,
+      "timestamp": "2026-09-20T14:18:19.876304"
+    }
+  ]
+}
