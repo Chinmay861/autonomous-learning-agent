@@ -19,10 +19,12 @@ logger = logging.getLogger(__name__)
 
 
 class QdrantStore:
-    def __init__(self, url: str = 'http://localhost:6333', collection_name: str = 'agent_learnings', dimension: int = 384):
+    def __init__(self, url: str = 'http://localhost:6333', collection_name: str = 'agent_learnings',
+                 dimension: int = 384, api_key: str = ""):
         self.url = url
         self.collection_name = collection_name
         self.dimension = dimension
+        self.api_key = api_key or ""
 
         # In-memory mode: no server needed
         if url == ":memory:":
@@ -30,7 +32,7 @@ class QdrantStore:
             self.mode = "in-memory"
             logger.info("Qdrant running in IN-MEMORY mode (no server required)")
         elif url.startswith("http://") or url.startswith("https://"):
-            self.client = QdrantClient(url=self.url)
+            self.client = QdrantClient(url=self.url, api_key=self.api_key or None)
             self.mode = "server"
             logger.info(f"Qdrant connecting to server at {url}")
         else:

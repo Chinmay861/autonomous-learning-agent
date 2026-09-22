@@ -44,6 +44,7 @@ def _create_memory_stack():
         url=settings.QDRANT_URL,
         collection_name=settings.QDRANT_COLLECTION,
         dimension=settings.EMBEDDING_DIMENSION,
+        api_key=settings.QDRANT_API_KEY,
     )
     retriever = MemoryRetriever(
         embedding_service=embedding_service,

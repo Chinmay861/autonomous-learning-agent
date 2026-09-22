@@ -1,10 +1,29 @@
 import os
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import List
 
 class Settings(BaseSettings):
     # Database - defaults to SQLite for zero-setup local development
     DATABASE_URL: str = "sqlite+aiosqlite:///./storage/agent.db"
+
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def _normalize_database_url(cls, value):
+        """Accept managed-Postgres URLs (Render, Heroku, Neon) as-is.
+
+        Converts the scheme to SQLAlchemy's asyncpg driver and translates
+        `sslmode=` (libpq) to `ssl=` (asyncpg).
+        """
+        if not isinstance(value, str):
+            return value
+        if value.startswith("postgres://"):
+            value = "postgresql+asyncpg://" + value[len("postgres://"):]
+        elif value.startswith("postgresql://"):
+            value = "postgresql+asyncpg://" + value[len("postgresql://"):]
+        if value.startswith("postgresql+asyncpg://") and "sslmode=" in value:
+            value = value.replace("sslmode=require", "ssl=require").replace("sslmode=prefer", "ssl=prefer")
+        return value
     
     # Redis - optional, set to empty string to use in-process mode
     REDIS_URL: str = ""

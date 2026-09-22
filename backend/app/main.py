@@ -58,11 +58,12 @@ async def lifespan(app: FastAPI):
     embedding_service = EmbeddingService(settings.EMBEDDING_MODEL)
     app.state.embedding_service = embedding_service
     
-    # Init Qdrant Store (supports in-memory mode)
+    # Init Qdrant Store (supports in-memory, local-disk and server modes)
     qdrant_store = QdrantStore(
         url=settings.QDRANT_URL,
         collection_name=settings.QDRANT_COLLECTION,
         dimension=settings.EMBEDDING_DIMENSION,
+        api_key=settings.QDRANT_API_KEY,
     )
     try:
         await qdrant_store.initialize()

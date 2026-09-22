@@ -1,4 +1,5 @@
 import { AgentEvent } from '../types';
+import { websocketUrl } from './backendUrl';
 
 type EventCallback = (event: AgentEvent) => void;
 
@@ -14,12 +15,8 @@ class WebSocketClient {
     this.currentToken = token;
     this.disconnect();
 
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = window.location.host;
-    // In dev, use the proxy or direct. Since Vite proxies /ws, we can just use the path
-    // But WebSocket requires full URL. Actually Vite proxy works with wss? Let's use direct host if not provided.
-    // For local dev, Vite proxies ws://localhost:5173/ws to ws://localhost:8000
-    const wsUrl = `${protocol}//${host}/ws/${taskId}?token=${token}`;
+    // Same-origin locally (Vite proxies /ws); hosted builds use VITE_API_BASE_URL.
+    const wsUrl = websocketUrl(taskId, token);
 
     this.ws = new WebSocket(wsUrl);
 

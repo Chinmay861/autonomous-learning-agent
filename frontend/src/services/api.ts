@@ -1,6 +1,5 @@
 import { Task, TaskCreate, Iteration, Rule, LearningRecord, Snapshot, MemorySearchResult, MemoryStats, Settings, HardwareInfo } from '../types';
-
-const API_BASE = '/api';
+import { API_BASE } from './backendUrl';
 
 class ApiClient {
   private getToken(): string | null {

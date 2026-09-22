@@ -337,8 +337,6 @@ pip install pytest pytest-asyncio
 pytest tests/ -v
 ```
 
-### Critical Tests
-
 The test suite verifies 8 critical invariants:
 1. Retrieval OFF → no vector queries
 2. Retrieval OFF → raw learning still written
@@ -389,6 +387,56 @@ Use a smaller model:
 ollama pull phi3:mini  # ~2GB
 ```
 Or adjust `PRIMARY_MODEL` in `.env`.
+
+## Deploy on Render
+
+The repo ships a `render.yaml` Blueprint that provisions three resources:
+`ala-postgres` (database), `ala-backend` (Docker web service) and
+`ala-frontend` (static site).
+
+### 1. Create a Qdrant Cloud cluster (required)
+
+Render does not host Qdrant. Create a free cluster at
+[cloud.qdrant.io](https://cloud.qdrant.io), then copy its **Cluster URL** and
+**API key** — you will paste them in step 3.
+
+### 2. Apply the Blueprint
+
+1. Push this repo to GitHub (already done if you cloned it from there).
+2. In the [Render Dashboard](https://dashboard.render.com) choose **New +** →
+   **Blueprint**, select this repository, and click **Apply**.
+3. Render prompts for the variables marked `sync: false`:
+   - `GROQ_API_KEY` — your Groq API key (or set a different provider below)
+   - `QDRANT_URL` — your Qdrant Cloud cluster URL
+   - `QDRANT_API_KEY` — your Qdrant Cloud API key
+
+Wait for both services to deploy (the backend image installs PyTorch and
+pre-downloads the embedding model, so the first build takes several minutes).
+
+### 3. Open the app
+
+- Frontend: `https://ala-frontend.onrender.com`
+- API docs: `https://ala-backend.onrender.com/docs`
+- Health: `https://ala-backend.onrender.com/api/health`
+
+Register an account and create a task. The frontend receives the backend URL at
+build time via `VITE_API_BASE_URL`; locally the Vite dev proxy is used instead.
+
+### Render notes and limits
+
+- **Backend plan:** the blueprint uses `1c-2g` (1 CPU / 2 GB). The free `512 MB`
+  plan is not enough for PyTorch + sentence-transformers and will run out of memory.
+- **Free Postgres** instances expire after 90 days unless upgraded.
+- **Free web services spin down** after idle time, which kills any in-process
+  agent run; paid instances stay up. Keep a single instance — the job manager
+  runs tasks in-process unless you configure `REDIS_URL`.
+- **Ephemeral disk:** `backend/storage` (raw learning logs, snapshots) resets on
+  each deploy. Durable state lives in Postgres and Qdrant.
+- **Real-time updates:** the WebSocket connects directly to the backend host, so
+  the frontend does not need a proxy.
+- Prefer another LLM provider? Set `LLM_PROVIDER` (`ollama` | `openai` |
+  `gemini` | `openrouter`) and the matching key in the backend service's
+  environment, then update the model variables.
 
 ## License
 

@@ -1,0 +1,78 @@
+# Render Blueprint - deploys the Autonomous Learning Agent as:
+#   1. Render Postgres      (database)
+#   2. ala-backend          (FastAPI + agent worker, Docker)
+#   3. ala-frontend         (React static site)
+#
+# Qdrant is not offered by Render. Create a free Qdrant Cloud cluster and paste
+# its URL + API key when Render prompts for the QDRANT_* values below.
+#
+# After the first deploy, open the frontend URL and register an account.
+
+databases:
+  - name: ala-postgres
+    databaseName: learning_agent
+    user: agent
+    plan: free
+    # Change to `oregon` if `singapore` is unavailable for your account.
+    region: singapore
+
+services:
+  # --- Backend API + in-process agent worker ---
+  - type: web
+    name: ala-backend
+    runtime: docker
+    region: singapore
+    # 512 MB is not enough for torch + sentence-transformers. Use 1c-2g (2 GB).
+    plan: 1c-2g
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    healthCheckPath: /api/health
+    maxShutdownDelaySeconds: 120
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ala-postgres
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      # Leave Redis empty: the job manager runs tasks in-process on one instance.
+      - key: REDIS_URL
+        value: ""
+      # Managed vector store (Qdrant Cloud). Filled in when the Blueprint is applied.
+      - key: QDRANT_URL
+        sync: false
+      - key: QDRANT_API_KEY
+        sync: false
+      # LLM provider (Groq shown; ollama/gemini/openai/openrouter also supported).
+      - key: LLM_PROVIDER
+        value: groq
+      - key: GROQ_API_KEY
+        sync: false
+      - key: CLOUD_MODEL
+        value: qwen/qwen3.8-27b
+      - key: PRIMARY_MODEL
+        value: qwen/qwen3.8-27b
+      - key: FAST_MODEL
+        value: qwen/qwen3.8-27b
+      - key: SYNTHESIS_MODEL
+        value: qwen/qwen3.8-27b
+
+  # --- Frontend (static site with SPA fallback) ---
+  - type: web
+    name: ala-frontend
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: ./dist
+    envVars:
+      # Public hostname of the backend service, injected at build time.
+      - key: VITE_API_BASE_URL
+        fromService:
+          type: web
+          name: ala-backend
+          envVarKey: RENDER_EXTERNAL_HOSTNAME
+    routes:
+      # Serve index.html for client-side routes.
+      - type: rewrite
+        source: /*
+        destination: /index.html
