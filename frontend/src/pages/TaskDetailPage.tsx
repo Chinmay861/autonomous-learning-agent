@@ -212,23 +212,44 @@ const TaskDetailPage = () => {
     }
   };
 
+  const fetchTab = async (tab: string) => {
+    if (!taskId) return;
+    if (tab === 'rules') {
+      const data = await api.getTaskRules(taskId);
+      setRules(data);
+    } else if (tab === 'learnings' || tab === 'timeline') {
+      const data = await api.getTaskLearnings(taskId);
+      setLearnings(data);
+    } else if (tab === 'snapshots') {
+      const data = await api.getTaskSnapshots(taskId);
+      setSnapshots(data);
+    }
+  };
+
   const loadTabData = async (tab: string) => {
     if (!taskId) return;
     setActiveTab(tab);
     setActionError('');
     try {
-      if (tab === 'rules' && rules.length === 0) {
-        const data = await api.getTaskRules(taskId);
-        setRules(data);
-      } else if ((tab === 'learnings' || tab === 'timeline') && learnings.length === 0) {
-        const data = await api.getTaskLearnings(taskId);
-        setLearnings(data);
-      } else if (tab === 'snapshots' && snapshots.length === 0) {
-        const data = await api.getTaskSnapshots(taskId);
-        setSnapshots(data);
+      const needsFetch =
+        (tab === 'rules' && rules.length === 0) ||
+        ((tab === 'learnings' || tab === 'timeline') && learnings.length === 0) ||
+        (tab === 'snapshots' && snapshots.length === 0);
+      if (needsFetch) {
+        await fetchTab(tab);
       }
     } catch (err: any) {
-      setActionError(err?.message || 'Unable to load this section. Try again.');
+      // One retry: a sleeping backend often answers the second attempt.
+      await new Promise(resolve => window.setTimeout(resolve, 4000));
+      try {
+        await fetchTab(tab);
+        setActionError('');
+      } catch (err2: any) {
+        const message = err2?.message || err?.message || 'Unable to load this section. Try again.';
+        setActionError(/timed out|failed to fetch|networkerror|load failed/i.test(message)
+          ? 'The backend did not respond. It may be waking up or restarting — wait about a minute, then use Refresh below.'
+          : message);
+      }
     }
   };
 
@@ -389,7 +410,7 @@ const TaskDetailPage = () => {
         {actionError && (
           <div role="alert" className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-700/60 bg-red-950 px-4 py-3 text-sm text-red-200">
             <span>{actionError}</span>
-            <button type="button" onClick={fetchTaskData} className="btn-secondary px-3 py-1.5 text-xs">
+            <button type="button" onClick={refreshTaskAndTabs} className="btn-secondary px-3 py-1.5 text-xs">
               Refresh
             </button>
           </div>

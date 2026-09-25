@@ -92,6 +92,7 @@ class ExperimentPlanner:
         stagnation: StagnationMetrics,
         available_tools: list[dict],
         iteration: int,
+        loop_warning: str = "",
     ) -> dict:
         """Plan the next experiment/action."""
         # Build context
@@ -125,7 +126,9 @@ class ExperimentPlanner:
             f"  - {t['name']}: {t.get('description', 'No description')} | Parameters: {json.dumps(t.get('parameters', t.get('schema', {})))}"
             for t in available_tools
         )
-        
+
+        loop_section = f"\n\nLoop Guard:\n{loop_warning}\n" if loop_warning else ""
+
         user_prompt = f"""Iteration: {iteration}
 
 Task: {task_description}
@@ -151,7 +154,7 @@ Retrieved Memories:
 Current Strategy: {current_strategy}
 
 Stagnation Metrics: {stagnation.summary()}
-Is Stagnant: {stagnation.is_stagnant}
+Is Stagnant: {stagnation.is_stagnant}{loop_section}
 
 Available Tools:
 {tools_text}

@@ -320,6 +320,7 @@ class AgentOrchestrator:
             failed_actions=self.state.failures[-10:],
             retrieved_memories=retrieved,
             stagnation=self.stagnation,
+            loop_warning=self._loop_warning(),
             available_tools=[a for a in self.environment.get_available_actions()],
             iteration=iteration,
         )
@@ -632,6 +633,59 @@ class AgentOrchestrator:
         
         return False
     
+    def _loop_warning(self, window: int = 4) -> str:
+        """Detect tight request loops (equivalent consecutive actions).
+
+        Open-ended tasks have no natural end state, so an agent can burn the
+        whole iteration budget re-issuing equivalent requests (same tool,
+        method and host). When the recent history shows such a loop, return a
+        directive for the planner; otherwise return "".
+        """
+        # Only HTTP-style tasks loop this way; grid/maze agents legitimately
+        # repeat moves (e.g. walking a straight corridor).
+        from app.environments.http_env import HTTPEnvironment
+        if not isinstance(self.environment, HTTPEnvironment):
+            return ""
+        from urllib.parse import urlparse
+
+        def _signature(action: Any) -> str | None:
+            if not isinstance(action, dict):
+                return None
+            params = action.get("parameters")
+            if not isinstance(params, dict):
+                params = action.get("arguments")
+            if not isinstance(params, dict):
+                params = action.get("args")
+            merged = dict(action)
+            if isinstance(params, dict):
+                for key, value in params.items():
+                    merged.setdefault(key, value)
+            tool = str(merged.get("tool") or merged.get("name") or "").lower()
+            method = str(merged.get("method") or "").upper()
+            url = merged.get("url") or ""
+            host = ""
+            if isinstance(url, str) and url:
+                try:
+                    host = urlparse(url).netloc.lower() or url.lower()
+                except Exception:
+                    host = str(url).lower()
+            direction = str(merged.get("direction") or "").lower()
+            signature = "|".join(part for part in (tool, method, host, direction) if part)
+            return signature or None
+
+        recent = [
+            signature
+            for entry in self.state.action_history[-window:]
+            if (signature := _signature(entry.get("action")))
+        ]
+        if len(recent) >= window and len(set(recent)) == 1:
+            return (
+                f"Loop warning: your last {len(recent)} actions were equivalent "
+                f"({recent[-1]}). Do not repeat this request. Either advance the task "
+                "goal with a different action, or state what is blocking completion."
+            )
+        return ""
+
     def _get_history_summary(self) -> str:
         """Get a brief summary of recent history for context."""
         recent = self.state.action_history[-10:]

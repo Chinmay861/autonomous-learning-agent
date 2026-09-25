@@ -19,17 +19,31 @@ class ApiClient {
       headers.set('Content-Type', 'application/json');
     }
 
-    const response = await fetch(`${API_BASE}${url}`, {
-      ...options,
-      headers
-    });
+    // Abort slow requests (e.g. a cold backend) instead of hanging forever.
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 60000);
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.detail || 'Unable to load data. Check your connection and try again.');
+    try {
+      const response = await fetch(`${API_BASE}${url}`, {
+        ...options,
+        headers,
+        signal: options.signal ?? controller.signal
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || 'Unable to load data. Check your connection and try again.');
+      }
+
+      return response.json();
+    } catch (err: any) {
+      if (err?.name === 'AbortError') {
+        throw new Error('The request timed out. The backend may be waking up — wait a moment and try again.');
+      }
+      throw err;
+    } finally {
+      window.clearTimeout(timeout);
     }
-
-    return response.json();
   }
 
   // Auth
