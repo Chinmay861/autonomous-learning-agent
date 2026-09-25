@@ -59,13 +59,13 @@ services:
         sync: false
       # Groq GPT-OSS models: openai/gpt-oss-120b (best) or openai/gpt-oss-20b (faster)
       - key: CLOUD_MODEL
-        value: openai/gpt-oss-120b
+        value: openai/gpt-oss-20b
       - key: PRIMARY_MODEL
-        value: openai/gpt-oss-120b
+        value: openai/gpt-oss-20b
       - key: FAST_MODEL
-        value: openai/gpt-oss-120b
+        value: openai/gpt-oss-20b
       - key: SYNTHESIS_MODEL
-        value: openai/gpt-oss-120b
+        value: openai/gpt-oss-20b
 
   # --- Frontend (static site with SPA fallback) ---
   - type: web

@@ -175,6 +175,11 @@ class OpenAICompatibleProvider(LLMProvider):
                     if e.response.status_code == 429:
                         await asyncio.sleep(1.5 * (attempt + 1))
                         continue
+                    # 404/5xx from Groq are frequently transient (model routing
+                    # flaps); retry them a few times before failing.
+                    if e.response.status_code in (404, 500, 502, 503, 529):
+                        await asyncio.sleep(1.5 * (attempt + 1))
+                        continue
                     raise
                 except httpx.HTTPError as e:
                     last_err = e

@@ -315,14 +315,20 @@ async def get_learnings(
     )
     db_learnings = result.scalars().all()
     if db_learnings:
-        return [{
-            "id": str(l.id),
-            "task_id": l.task_id,
-            "content": l.content,
-            "category": l.category.value if hasattr(l.category, 'value') else str(l.category),
-            "iteration_number": l.iteration_number,
-            "created_at": l.created_at.isoformat() if l.created_at else datetime.now(timezone.utc).isoformat()
-        } for l in db_learnings]
+        items = []
+        for l in db_learnings:
+            payload = l.learning if isinstance(l.learning, dict) else {"text": str(l.learning or "")}
+            text = payload.get("learning") or payload.get("discovery") or payload.get("mistake") or ""
+            content = text if isinstance(text, str) and text.strip() else json.dumps(payload)
+            items.append({
+                "id": str(l.id),
+                "task_id": l.task_id,
+                "content": content,
+                "category": l.category.value if hasattr(l.category, 'value') else str(l.category),
+                "iteration_number": l.iteration_number,
+                "created_at": l.created_at.isoformat() if l.created_at else datetime.now(timezone.utc).isoformat()
+            })
+        return items
         
     # Read from learnings.txt if present
     learnings_file = os.path.join(settings.STORAGE_DIR, "tasks", task_id, "learnings.txt")
