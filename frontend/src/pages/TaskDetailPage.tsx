@@ -156,7 +156,9 @@ const TaskDetailPage = () => {
             } else if (event.type === 'learning_created') {
               api.getTaskLearnings(taskId).then(data => Array.isArray(data) && setLearnings(data)).catch(() => {});
             } else if (event.type === 'task_completed') {
-              setTask(prev => prev ? { ...prev, status: 'COMPLETED' as any } : prev);
+              // Full refresh: status plus every tab, so the finished state is
+              // visible even if some events were missed.
+              refreshTaskAndTabs();
             }
           } catch (err) {
             console.error('Error handling WebSocket event:', err, event);
@@ -170,6 +172,26 @@ const TaskDetailPage = () => {
       }
     }
   }, [taskId]);
+
+  // Fallback: poll task status while the run is active so a dropped
+  // WebSocket cannot leave the UI stuck, and refresh all tabs on completion.
+  useEffect(() => {
+    if (!taskId || !task) return;
+    const status = (task.status || '').toLowerCase();
+    if (!['created', 'queued', 'running', 'paused'].includes(status)) return;
+    const timer = window.setInterval(async () => {
+      try {
+        const fresh = await api.getTask(taskId);
+        setTask(fresh);
+        if (['completed', 'failed', 'stopped'].includes((fresh.status || '').toLowerCase())) {
+          refreshTaskAndTabs();
+        }
+      } catch {
+        // Ignored; restored on the next tick or via WebSocket.
+      }
+    }, 10000);
+    return () => window.clearInterval(timer);
+  }, [taskId, task?.status]);
 
   const fetchTaskData = async () => {
     if (!taskId) return;
@@ -198,7 +220,7 @@ const TaskDetailPage = () => {
       if (tab === 'rules' && rules.length === 0) {
         const data = await api.getTaskRules(taskId);
         setRules(data);
-      } else if (tab === 'learnings' && learnings.length === 0) {
+      } else if ((tab === 'learnings' || tab === 'timeline') && learnings.length === 0) {
         const data = await api.getTaskLearnings(taskId);
         setLearnings(data);
       } else if (tab === 'snapshots' && snapshots.length === 0) {
@@ -207,6 +229,29 @@ const TaskDetailPage = () => {
       }
     } catch (err: any) {
       setActionError(err?.message || 'Unable to load this section. Try again.');
+    }
+  };
+
+  const refreshTaskAndTabs = async () => {
+    if (!taskId) return;
+    try {
+      const fresh = await api.getTask(taskId);
+      setTask(fresh);
+      const [iterData, ruleData, learnData, snapData] = await Promise.all([
+        api.getTaskIterations(taskId).catch(() => []),
+        api.getTaskRules(taskId).catch(() => []),
+        api.getTaskLearnings(taskId).catch(() => []),
+        api.getTaskSnapshots(taskId).catch(() => []),
+      ]);
+      if (Array.isArray(iterData)) {
+        setIterations(iterData);
+        if (iterData.length > 0) setCurrentIteration(iterData[iterData.length - 1]);
+      }
+      if (Array.isArray(ruleData)) setRules(ruleData);
+      if (Array.isArray(learnData)) setLearnings(learnData);
+      if (Array.isArray(snapData)) setSnapshots(snapData);
+    } catch {
+      // WebSocket remains the primary channel; this refresh is a fallback.
     }
   };
 

@@ -434,6 +434,65 @@ class AgentOrchestrator:
                 await self.emit_event("rule_updated", rule_changes)
                 self.state.known_rules = [r.to_dict() for r in self.rule_model.known_rules]
                 self.state.hypotheses = [r.to_dict() for r in self.rule_model.hypothesized_rules]
+                # Persist the rule model to the database so the rules tab
+                # survives restarts and does not depend on ephemeral files.
+                try:
+                    from app.database.connection import async_sessionmaker_db as _rule_session_factory
+                    from app.database.models import Rule as DBRule
+                    from app.database.models import RuleCategory as DBRuleCategory
+                    from app.database.models import RuleStatus as DBRuleStatus
+                    from sqlalchemy import select as _select
+
+                    def _rule_status(value: str):
+                        name = str(value or "").upper()
+                        if name == "HYPOTHESIZED":
+                            name = "HYPOTHESIS"
+                        return DBRuleStatus.__members__.get(name, DBRuleStatus.HYPOTHESIS)
+
+                    def _rule_category(value: str):
+                        name = str(value or "").lower()
+                        if name == "constraint":
+                            return DBRuleCategory.CONSTRAINT
+                        if name == "fact":
+                            return DBRuleCategory.FACT
+                        if name == "pattern":
+                            return DBRuleCategory.PATTERN
+                        return DBRuleCategory.HEURISTIC
+
+                    async with _rule_session_factory() as rule_session:
+                        for model_rule in self.rule_model.rules:
+                            existing = await rule_session.execute(
+                                _select(DBRule).where(
+                                    DBRule.task_id == self.task_id,
+                                    DBRule.rule_text == model_rule.rule_text,
+                                )
+                            )
+                            row = existing.scalar_one_or_none()
+                            evidence = [
+                                {"text": str(item)}
+                                for item in (model_rule.evidence or [])
+                                if str(item).strip()
+                            ]
+                            if row is None:
+                                row = DBRule(
+                                    task_id=self.task_id,
+                                    rule_text=model_rule.rule_text,
+                                    category=_rule_category(model_rule.category),
+                                    confidence=float(model_rule.confidence or 0.0),
+                                    status=_rule_status(model_rule.status),
+                                    evidence=evidence,
+                                    first_observed_iteration=model_rule.first_observed_iteration or iteration,
+                                    last_verified_iteration=model_rule.last_verified_iteration or iteration,
+                                )
+                                rule_session.add(row)
+                            else:
+                                row.confidence = float(model_rule.confidence or 0.0)
+                                row.status = _rule_status(model_rule.status)
+                                row.evidence = evidence
+                                row.last_verified_iteration = model_rule.last_verified_iteration or iteration
+                        await rule_session.commit()
+                except Exception as e:
+                    logger.warning(f"Could not persist rules to DB: {e}")
         
         # ================================================================
         # STEP 9: UPDATE STRATEGY (smart conditional execution)
@@ -497,7 +556,8 @@ class AgentOrchestrator:
         # Persist iteration to database for history/timeline
         try:
             from app.database.connection import async_sessionmaker_db
-            from app.database.models import Iteration, Task
+            from app.database.models import Iteration, LearningRecord, Task
+            from app.database.models import LearningCategory as DBLearningCategory
             from sqlalchemy import select
             async with async_sessionmaker_db() as session:
                 db_iter = Iteration(
@@ -511,6 +571,36 @@ class AgentOrchestrator:
                     score=env_state.score,
                 )
                 session.add(db_iter)
+                # Persist extracted learnings so the timeline/learnings tabs
+                # survive restarts and do not depend on ephemeral log files.
+                for learning in learnings:
+                    if not isinstance(learning, dict):
+                        learning = {"learning": str(learning)}
+                    try:
+                        confidence = float(learning.get("confidence", 0.5))
+                    except (TypeError, ValueError):
+                        confidence = 0.5
+                    try:
+                        quality_score = float(learning.get("quality_score", 0.5))
+                    except (TypeError, ValueError):
+                        quality_score = 0.5
+                    category_name = str(learning.get("category", "OBSERVATION") or "OBSERVATION").upper()
+                    if category_name not in DBLearningCategory.__members__:
+                        category_name = "OBSERVATION"
+                    session.add(LearningRecord(
+                        task_id=self.task_id,
+                        iteration_number=iteration,
+                        category=DBLearningCategory[category_name],
+                        observation=str(env_state.description or ""),
+                        action=action if isinstance(action, dict) else {"action": str(action)},
+                        expected_result=str(experiment.get("expected_result", "") or ""),
+                        actual_result=str(result.output or result.error or ""),
+                        mistake=mistake or None,
+                        discovery=discovery or None,
+                        learning=learning,
+                        confidence=confidence,
+                        quality_score=quality_score,
+                    ))
                 task_res = await session.execute(select(Task).where(Task.id == self.task_id))
                 t_row = task_res.scalar_one_or_none()
                 if t_row:
@@ -605,9 +695,16 @@ class AgentOrchestrator:
             task_type=self.task_analysis.task_type if self.task_analysis else "general",
         )
         
-        # Store in vector memory - ALWAYS, regardless of retrieval_enabled
+        # Store in vector memory - ALWAYS, regardless of retrieval_enabled.
+        # A storage failure must never abort the run: on failure the learnings
+        # are retained (trimmed) for the next synthesis attempt.
         if self.memory_manager and synthesized:
-            stored_ids = await self.memory_manager.store_batch(synthesized, self.task_id)
+            try:
+                stored_ids = await self.memory_manager.store_batch(synthesized, self.task_id)
+            except Exception as e:
+                logger.warning(f"Could not store synthesized learnings: {e}")
+                self._accumulated_learnings = self._accumulated_learnings[-200:]
+                return
             logger.info(f"Stored {len(stored_ids)} synthesized learnings in vector memory")
             await self.emit_event("synthesis_completed", {
                 "count": len(synthesized),
