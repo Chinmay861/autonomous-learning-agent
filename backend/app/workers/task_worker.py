@@ -19,7 +19,7 @@ from app.models.llm_provider import OllamaProvider
 from app.environments.benchmark_env import BenchmarkEnvironment
 from app.agents.orchestrator import AgentOrchestrator
 from app.memory.memory_manager import MemoryManager
-from app.memory.qdrant_store import QdrantStore
+from app.memory.qdrant_store import get_qdrant_store
 from app.memory.embeddings import EmbeddingService
 from app.memory.retriever import MemoryRetriever
 
@@ -39,9 +39,16 @@ async def update_task_status(task_id: str, status: TaskStatus, iteration: int | 
 
 
 def _create_memory_stack():
-    """Create the memory system components."""
+    """Create the memory system components.
+
+    The Qdrant store is shared per process: on-disk Qdrant (QdrantClient path
+    mode) takes an exclusive file lock, so every in-process user must reuse
+    the same client. Everything else (embeddings, retriever, manager) is
+    created fresh per task so per-task settings like retrieval_enabled never
+    leak between runs.
+    """
     embedding_service = EmbeddingService(settings.EMBEDDING_MODEL)
-    qdrant_store = QdrantStore(
+    qdrant_store = get_qdrant_store(
         url=settings.QDRANT_URL,
         collection_name=settings.QDRANT_COLLECTION,
         dimension=settings.EMBEDDING_DIMENSION,

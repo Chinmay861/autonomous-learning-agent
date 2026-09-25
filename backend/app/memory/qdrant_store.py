@@ -222,3 +222,22 @@ class QdrantStore:
         except Exception as e:
             logger.warning(f"Could not scroll Qdrant payloads: {e}")
             return []
+
+
+_store_cache: dict = {}
+
+
+def get_qdrant_store(url: str = 'http://localhost:6333', collection_name: str = 'agent_learnings',
+                     dimension: int = 384, api_key: str = "") -> "QdrantStore":
+    """Return the process-wide QdrantStore for the given configuration.
+
+    On-disk Qdrant (QdrantClient path mode) takes an exclusive file lock, so a
+    second client on the same path raises AlreadyLocked. Every in-process user
+    (API lifespan, task workers) must share one client per configuration.
+    """
+    key = (url, collection_name, dimension, api_key or "")
+    store = _store_cache.get(key)
+    if store is None:
+        store = QdrantStore(url=url, collection_name=collection_name, dimension=dimension, api_key=api_key or "")
+        _store_cache[key] = store
+    return store

@@ -74,11 +74,18 @@ async def main() -> None:
     print(f"Vector store: {settings.QDRANT_URL} (collection: {settings.QDRANT_COLLECTION})")
 
     embedding_service = EmbeddingService(settings.EMBEDDING_MODEL)
-    qdrant_store = QdrantStore(
-        url=settings.QDRANT_URL,
-        collection_name=settings.QDRANT_COLLECTION,
-        dimension=settings.EMBEDDING_DIMENSION,
-    )
+    try:
+        qdrant_store = QdrantStore(
+            url=settings.QDRANT_URL,
+            collection_name=settings.QDRANT_COLLECTION,
+            dimension=settings.EMBEDDING_DIMENSION,
+        )
+    except Exception as exc:
+        print(
+            "Could not open the vector store. If the backend server is running, "
+            f"stop it first (on-disk Qdrant allows one process at a time): {exc}"
+        )
+        raise SystemExit(1)
     await qdrant_store.initialize()
     retriever = MemoryRetriever(embedding_service=embedding_service, qdrant_store=qdrant_store)
     memory_manager = MemoryManager(

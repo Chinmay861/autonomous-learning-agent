@@ -159,6 +159,8 @@ const TaskDetailPage = () => {
               // Full refresh: status plus every tab, so the finished state is
               // visible even if some events were missed.
               refreshTaskAndTabs();
+            } else if (event.type === 'task_failed') {
+              refreshTaskAndTabs();
             }
           } catch (err) {
             console.error('Error handling WebSocket event:', err, event);

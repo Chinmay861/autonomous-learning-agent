@@ -18,7 +18,7 @@ from app.api.settings_api import router as settings_router
 from app.api.websocket import router as ws_router
 from app.workers.job_manager import JobManager
 from app.memory.embeddings import EmbeddingService
-from app.memory.qdrant_store import QdrantStore
+from app.memory.qdrant_store import get_qdrant_store
 from app.memory.retriever import MemoryRetriever
 from app.memory.memory_manager import MemoryManager
 from app.learning.persistence import FileStorageManager
@@ -58,8 +58,10 @@ async def lifespan(app: FastAPI):
     embedding_service = EmbeddingService(settings.EMBEDDING_MODEL)
     app.state.embedding_service = embedding_service
     
-    # Init Qdrant Store (supports in-memory, local-disk and server modes)
-    qdrant_store = QdrantStore(
+    # Init Qdrant Store (supports in-memory, local-disk and server modes).
+    # Shared per process: on-disk Qdrant takes an exclusive lock, so the API
+    # layer and the task workers must use the same client instance.
+    qdrant_store = get_qdrant_store(
         url=settings.QDRANT_URL,
         collection_name=settings.QDRANT_COLLECTION,
         dimension=settings.EMBEDDING_DIMENSION,

@@ -195,7 +195,27 @@ class AgentOrchestrator:
         """Execute the main agent loop."""
         logger.info(f"Starting agent run for task {self.task_id}")
         await self.emit_event("task_started", {"max_iterations": self.max_iterations})
-        
+
+        # Preflight: fail fast when the LLM credentials are rejected, instead of
+        # burning the whole iteration budget on fallbacks that learn nothing.
+        try:
+            await self.llm.list_models()
+        except Exception as e:
+            message = str(e)
+            if any(signal in message for signal in (
+                "401", "403", "Unauthorized", "unauthorized",
+                "invalid_api_key", "expired_api_key", "Invalid API Key",
+            )):
+                logger.error(f"LLM authentication failed, aborting task {self.task_id}: {message[:200]}")
+                self.state.completion_status = "failed"
+                await self.emit_event("task_failed", {
+                    "error": "LLM authentication failed (401 Unauthorized). "
+                             "The configured API key is invalid or expired.",
+                })
+                await self._save_checkpoint()
+                return self.state
+            logger.warning(f"LLM preflight check failed, continuing anyway: {message[:200]}")
+
         try:
             # Phase 1: Analyze the task
             self.task_analysis = await self.task_analyzer.analyze(
