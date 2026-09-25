@@ -191,6 +191,20 @@ class AgentOrchestrator:
             except Exception as e:
                 logger.error(f"Error emitting event {event_type}: {e}")
     
+    def _quota_error(self) -> str | None:
+        """Return the provider's quota-exhaustion message, if any."""
+        return getattr(self.llm, "quota_exhausted", None)
+
+    async def _abort_for_quota(self, message: str) -> AgentState:
+        """Abort the run cleanly when the LLM quota is exhausted."""
+        logger.error(f"Aborting task {self.task_id}: LLM quota exhausted.")
+        self.state.completion_status = "failed"
+        await self.emit_event("task_failed", {
+            "error": f"LLM quota exhausted, run aborted. {message[:300]}",
+        })
+        await self._save_checkpoint()
+        return self.state
+
     async def run(self) -> AgentState:
         """Execute the main agent loop."""
         logger.info(f"Starting agent run for task {self.task_id}")
@@ -225,7 +239,11 @@ class AgentOrchestrator:
                 environment_info=self.environment.description if hasattr(self.environment, 'description') else None,
             )
             await self.emit_event("task_analyzed", {"analysis": self.task_analysis.to_dict()})
-            
+
+            quota_error = self._quota_error()
+            if quota_error:
+                return await self._abort_for_quota(quota_error)
+
             # Initialize environment
             initial_state = await self.environment.reset()
             self.state.environment_state = initial_state.description
@@ -246,7 +264,11 @@ class AgentOrchestrator:
                 if self._stopped:
                     self.state.completion_status = "stopped"
                     break
-                
+
+                quota_error = self._quota_error()
+                if quota_error:
+                    return await self._abort_for_quota(quota_error)
+
                 self.state.iteration += 1
                 await self.emit_event("iteration_started", {"iteration": self.state.iteration})
                 

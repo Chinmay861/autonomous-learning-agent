@@ -140,11 +140,13 @@ async def process_task_local(task_config: dict, event_bus, job_manager: Any = No
             await update_task_status(task_id, TaskStatus.COMPLETED, final_state.iteration)
         elif final_state.completion_status == "stopped":
             await update_task_status(task_id, TaskStatus.STOPPED, final_state.iteration)
+        elif final_state.completion_status == "failed":
+            await update_task_status(task_id, TaskStatus.FAILED, final_state.iteration)
         else:
             await update_task_status(task_id, TaskStatus.COMPLETED, final_state.iteration)
-            
+
         logger.info(f"Task {task_id} finished: {final_state.completion_status} at iteration {final_state.iteration}")
-        
+
     except asyncio.CancelledError:
         logger.info(f"Task {task_id} was cancelled.")
         await update_task_status(task_id, TaskStatus.STOPPED)
@@ -203,6 +205,8 @@ async def process_task_redis(redis, task_config: dict) -> None:
                 await update_task_status(task_id, TaskStatus.COMPLETED, final_state.iteration)
             elif final_state.completion_status == "stopped":
                 await update_task_status(task_id, TaskStatus.STOPPED, final_state.iteration)
+            elif final_state.completion_status == "failed":
+                await update_task_status(task_id, TaskStatus.FAILED, final_state.iteration)
             else:
                 await update_task_status(task_id, TaskStatus.COMPLETED, final_state.iteration)
         except Exception as e:

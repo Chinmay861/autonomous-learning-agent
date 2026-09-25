@@ -4,6 +4,15 @@ import httpx
 import json
 import asyncio
 
+class QuotaExhaustedError(Exception):
+    """Raised when the provider reports a daily/quota limit.
+
+    Retrying cannot help until the quota resets, so callers should abort
+    cleanly instead of burning the iteration budget on fallbacks.
+    """
+    pass
+
+
 class LLMProvider(ABC):
     @abstractmethod
     async def generate(self, prompt: str, system: str = '', temperature: float = 0.7) -> str: ...
@@ -149,6 +158,22 @@ class OpenAICompatibleProvider(LLMProvider):
         self.base_url = base_url
         self.api_key = api_key
         self.model = model
+        # Set to the provider's message when a daily/quota limit is hit.
+        # The orchestrator checks this flag to abort the run instead of
+        # burning iterations on fallbacks that cannot succeed.
+        self.quota_exhausted: str | None = None
+
+    @staticmethod
+    def _quota_message(response) -> str | None:
+        """Extract a daily/quota-limit signal from a 429 response, if present."""
+        try:
+            body = response.json()
+        except Exception:
+            return None
+        message = ((body.get("error") or {}).get("message", "")) if isinstance(body, dict) else ""
+        if any(signal in message for signal in ("per day", "TPD", "tokens per day", "daily limit", "per-day", "quota")):
+            return message[:300]
+        return None
     
     async def _request(self, method: str, endpoint: str, **kwargs) -> Any:
         headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
@@ -159,6 +184,13 @@ class OpenAICompatibleProvider(LLMProvider):
                 try:
                     response = await client.request(method, f"{self.base_url}{endpoint}", headers=headers, **kwargs)
                     if response.status_code == 429:
+                        quota_message = self._quota_message(response)
+                        if quota_message:
+                            self.quota_exhausted = quota_message
+                            raise QuotaExhaustedError(
+                                "LLM daily quota exhausted. No further calls will succeed "
+                                f"until it resets. Provider says: {quota_message}"
+                            )
                         retry_after = float(response.headers.get("retry-after", 1.5 * (attempt + 1)))
                         await asyncio.sleep(min(retry_after, 4.0))
                         if "json" in kwargs and isinstance(kwargs["json"], dict):
@@ -173,6 +205,13 @@ class OpenAICompatibleProvider(LLMProvider):
                 except httpx.HTTPStatusError as e:
                     last_err = e
                     if e.response.status_code == 429:
+                        quota_message = self._quota_message(e.response)
+                        if quota_message:
+                            self.quota_exhausted = quota_message
+                            raise QuotaExhaustedError(
+                                "LLM daily quota exhausted. No further calls will succeed "
+                                f"until it resets. Provider says: {quota_message}"
+                            ) from e
                         await asyncio.sleep(1.5 * (attempt + 1))
                         continue
                     # 404/5xx from Groq are frequently transient (model routing
