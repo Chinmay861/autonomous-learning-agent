@@ -51,6 +51,10 @@ class Settings(BaseSettings):
     
     EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
     EMBEDDING_DIMENSION: int = 384
+    # "local" runs sentence-transformers in-process (needs torch, ~1GB RAM);
+    # "hf" calls Hugging Face Inference (same weights, needs HF_TOKEN, tiny RAM).
+    EMBEDDING_PROVIDER: str = "local"
+    HF_TOKEN: str = ""
     
     SECRET_KEY: str = "change-me-to-a-random-secret-key-in-production"
     JWT_ALGORITHM: str = "HS256"

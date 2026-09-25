@@ -22,8 +22,11 @@ services:
     name: ala-backend
     runtime: docker
     region: singapore
-    # 512 MB is not enough for torch + sentence-transformers. Use 1c-2g (2 GB).
-    plan: 1c-2g
+    # Free tier (512 MB) is enough now that embeddings run on Hugging Face
+    # Inference instead of local PyTorch. Upgrade to 1c-2g if you switch back
+    # to EMBEDDING_PROVIDER=local. Note: free services sleep after 15 min idle,
+    # which ends any in-process agent run; paid plans stay up.
+    plan: free
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
     healthCheckPath: /api/health
@@ -38,6 +41,12 @@ services:
       # Leave Redis empty: the job manager runs tasks in-process on one instance.
       - key: REDIS_URL
         value: ""
+      # Embeddings run on Hugging Face Inference (free tier) so the 512 MB
+      # free plan has enough RAM. Needs HF_TOKEN below (free HF account).
+      - key: EMBEDDING_PROVIDER
+        value: hf
+      - key: HF_TOKEN
+        sync: false
       # Managed vector store (Qdrant Cloud). Filled in when the Blueprint is applied.
       - key: QDRANT_URL
         sync: false

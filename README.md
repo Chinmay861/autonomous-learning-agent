@@ -424,8 +424,12 @@ build time via `VITE_API_BASE_URL`; locally the Vite dev proxy is used instead.
 
 ### Render notes and limits
 
-- **Backend plan:** the blueprint uses `1c-2g` (1 CPU / 2 GB). The free `512 MB`
-  plan is not enough for PyTorch + sentence-transformers and will run out of memory.
+- **Embeddings run on Hugging Face Inference** (`EMBEDDING_PROVIDER=hf` in
+  `render.yaml`), so the free 512 MB plan is enough. Create a free token at
+  [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens)
+  (needs Inference Providers access) and paste it as `HF_TOKEN` when applying
+  the Blueprint. Switch back to `EMBEDDING_PROVIDER=local` only on a 2 GB+
+  plan with torch installed.
 - **Free Postgres** instances expire after 90 days unless upgraded.
 - **Free web services spin down** after idle time, which kills any in-process
   agent run; paid instances stay up. Keep a single instance — the job manager
