@@ -334,14 +334,20 @@ class AgentOrchestrator:
         # ================================================================
         # STEP 2: RETRIEVE MEMORIES (if enabled)
         # ================================================================
+        # Retrieval is best-effort: a failure here (missing embedding token,
+        # unreachable vector store, cold model) must never abort the run.
         retrieved = None
         if self.retrieval_enabled and self.memory_manager:
-            retrieved = await self.memory_manager.retrieve_relevant_memories(
-                task=self.task_description,
-                state=env_state.description,
-                top_k=self.top_k,
-                min_similarity=self.min_similarity,
-            )
+            try:
+                retrieved = await self.memory_manager.retrieve_relevant_memories(
+                    task=self.task_description,
+                    state=env_state.description,
+                    top_k=self.top_k,
+                    min_similarity=self.min_similarity,
+                )
+            except Exception as e:
+                logger.warning(f"Memory retrieval failed, continuing without memories: {e}")
+                retrieved = None
             if retrieved:
                 self.state.retrieved_memories = retrieved
                 await self.emit_event("memories_retrieved", {
