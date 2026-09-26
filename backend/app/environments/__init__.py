@@ -5,6 +5,30 @@ from .http_env import HTTPEnvironment
 from .grid_world_env import GridWorldEnvironment
 from .maze_env import MazeEnvironment
 from .universal_env import UniversalSimulationEnvironment
+import re
+
+
+_HTTP_URL_RE = re.compile(r"https?://[^\s<>\"']+", re.IGNORECASE)
+_HTTP_INTENT_RE = re.compile(
+    r"\b(?:make|send|perform|issue|call)\s+(?:an?\s+)?(?:http\s+)?"
+    r"(?:get|post|put|delete|request)\b|"
+    r"\b(?:interact|connect|communicate)\s+(?:with|to)\s+(?:an?\s+)?"
+    r"(?:http\s*|rest\s*)?(?:api|endpoint)\b|"
+    r"\b(?:api|endpoint)\s+(?:base\s+)?url\s*[:=]|\bcurl\b",
+    re.IGNORECASE,
+)
+
+
+def _is_explicit_http_task(text: str) -> bool:
+    """Return true only when the task actually supplies an HTTP interface.
+
+    Words such as "API", "URL", or "fetch" occur in ordinary research and
+    simulation prompts.  Treating one word as proof of an HTTP environment
+    makes the planner invent localhost endpoints instead of operating in the
+    supplied simulation.  A concrete URL or an explicit request instruction
+    is required before exposing the HTTP tool.
+    """
+    return bool(_HTTP_URL_RE.search(text) or _HTTP_INTENT_RE.search(text))
 
 def get_environment_for_task(task_config: dict, llm=None) -> Environment:
     """Dynamically select and initialize the appropriate environment based on task content."""
@@ -39,9 +63,9 @@ def get_environment_for_task(task_config: dict, llm=None) -> Environment:
     if any(k in combined for k in python_keywords):
         return PythonEnvironment()
 
-    # 4. HTTP / Web API tasks
-    http_keywords = ["http", "api", "rest", "endpoint", "url", "fetch"]
-    if any(k in combined for k in http_keywords):
+    # 4. HTTP / Web API tasks. A mere mention of API/URL is not enough: text
+    # simulations frequently use those words without exposing a web service.
+    if _is_explicit_http_task(combined):
         return HTTPEnvironment()
 
     # 5. Default: Universal Interactive Simulation
