@@ -90,10 +90,19 @@ async def memory_health(
     try:
         store = memory_manager.qdrant_store
         dimension = checks["embeddings"].get("dimension") if checks["embeddings"].get("ok") else 384
-        probe_id = f"health-probe-{uuid.uuid4()}"
-        await store.insert(probe_id, [0.0] * dimension, {"probe": True, "task_id": "health"})
-        hits = await store.search([0.0] * dimension, limit=1, min_score=0.0)
-        await store.delete(probe_id)
+        # Qdrant Cloud only accepts integer or UUID point IDs.  The old
+        # prefixed probe ID was invalid and `insert` returns False rather than
+        # raising, leading this endpoint to report a false positive.
+        probe_id = str(uuid.uuid4())
+        probe_vector = [1.0] + [0.0] * (dimension - 1)
+        inserted = await store.insert(probe_id, probe_vector, {"probe": True, "task_id": "health"})
+        if not inserted:
+            raise RuntimeError(getattr(store, "last_error", None) or "Qdrant rejected the probe write")
+        hits = await store.search(probe_vector, limit=1, min_score=0.99)
+        if not any(hit.get("id") == probe_id for hit in hits or []):
+            raise RuntimeError("Qdrant probe write was not returned by a matching search")
+        if not await store.delete(probe_id):
+            raise RuntimeError("Qdrant probe cleanup failed")
         checks["qdrant"] = {
             "ok": True,
             "mode": getattr(store, "mode", "unknown"),

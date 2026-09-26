@@ -8,6 +8,11 @@ from app.memory.retriever import MemoryRetriever
 
 logger = logging.getLogger(__name__)
 
+
+class MemoryStorageError(RuntimeError):
+    """Raised when a synthesized learning could not be persisted to Qdrant."""
+
+
 class MemoryManager:
     def __init__(self, embedding_service: EmbeddingService, qdrant_store: QdrantStore, retriever: MemoryRetriever):
         self.embedding_service = embedding_service
@@ -77,7 +82,12 @@ class MemoryManager:
             new_evidence = learning.get('evidence_summary', '')
             merged_payload['evidence_summary'] = f"{old_evidence}\nNew Evidence: {new_evidence}"
             
-            await self.qdrant_store.update_payload(existing_id, merged_payload)
+            updated = await self.qdrant_store.update_payload(existing_id, merged_payload)
+            if not updated:
+                raise MemoryStorageError(
+                    f"Qdrant could not update duplicate learning '{title[:60]}': "
+                    f"{getattr(self.qdrant_store, 'last_error', None) or 'unknown error'}"
+                )
             return existing_id
         else:
             # Insert new
@@ -100,7 +110,12 @@ class MemoryManager:
             if learning.get('iteration_number') is not None:
                 payload['iteration_number'] = learning['iteration_number']
             
-            await self.qdrant_store.insert(learning_id, vector, payload)
+            inserted = await self.qdrant_store.insert(learning_id, vector, payload)
+            if not inserted:
+                raise MemoryStorageError(
+                    f"Qdrant could not store learning '{title[:60]}': "
+                    f"{getattr(self.qdrant_store, 'last_error', None) or 'unknown error'}"
+                )
             return learning_id
 
     async def store_batch(self, learnings: List[Dict], task_id: str) -> List[str]:

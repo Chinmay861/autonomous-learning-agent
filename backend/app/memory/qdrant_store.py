@@ -25,6 +25,9 @@ class QdrantStore:
         self.collection_name = collection_name
         self.dimension = dimension
         self.api_key = api_key or ""
+        # Preserve the most recent backend error.  The caller needs to tell an
+        # empty collection apart from a rejected vector write.
+        self.last_error: str | None = None
 
         # In-memory mode: no server needed
         if url == ":memory:":
@@ -72,7 +75,12 @@ class QdrantStore:
                     except Exception:
                         pass  # Index may already exist
                         
-        await asyncio.to_thread(_init_sync)
+        try:
+            await asyncio.to_thread(_init_sync)
+            self.last_error = None
+        except Exception as e:
+            self.last_error = str(e)
+            raise
 
     async def insert(self, id: str, vector: list[float], payload: dict) -> bool:
         def _insert_sync():
@@ -89,8 +97,11 @@ class QdrantStore:
             return True
             
         try:
-            return await asyncio.to_thread(_insert_sync)
+            inserted = await asyncio.to_thread(_insert_sync)
+            self.last_error = None
+            return inserted
         except Exception as e:
+            self.last_error = str(e)
             logger.error(f"Error inserting to Qdrant: {e}")
             return False
 
@@ -152,7 +163,9 @@ class QdrantStore:
             
         try:
             return await asyncio.to_thread(_update_sync)
-        except Exception:
+        except Exception as e:
+            self.last_error = str(e)
+            logger.error(f"Error updating Qdrant payload: {e}")
             return False
 
     async def delete(self, id: str) -> bool:

@@ -836,6 +836,20 @@ class AgentOrchestrator:
                 })
                 self._accumulated_learnings = self._accumulated_learnings[-200:]
                 return
+            if len(stored_ids) != len(synthesized):
+                error = (
+                    f"Only stored {len(stored_ids)} of {len(synthesized)} synthesized "
+                    "learnings; retaining the batch for retry."
+                )
+                logger.error(f"[Synthesis] {error}")
+                await self.emit_event("synthesis_failed", {
+                    "error": error,
+                    "synthesized_count": len(synthesized),
+                    "stored": len(stored_ids),
+                })
+                self._accumulated_learnings = self._accumulated_learnings[-200:]
+                return
+
             logger.info(f"[Synthesis] ✓ Stored {len(stored_ids)} synthesized learnings in vector memory for task {self.task_id}")
             await self.emit_event("synthesis_completed", {
                 "count": len(synthesized),

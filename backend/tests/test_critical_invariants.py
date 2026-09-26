@@ -125,6 +125,25 @@ class TestSynthesisAlwaysHappens:
         assert learning_id is not None
         qdrant_store.insert.assert_called_once()
 
+    @pytest.mark.asyncio
+    async def test_failed_qdrant_insert_is_not_reported_as_stored(self):
+        """A rejected Qdrant write must surface to the orchestrator for retry."""
+        from app.memory.memory_manager import MemoryManager, MemoryStorageError
+
+        embedding_service = MagicMock()
+        embedding_service.embed = AsyncMock(return_value=[0.1] * 384)
+        qdrant_store = MagicMock()
+        qdrant_store.find_duplicates = AsyncMock(return_value=[])
+        qdrant_store.insert = AsyncMock(return_value=False)
+        qdrant_store.last_error = "Wrong input: Vector dimension error"
+
+        manager = MemoryManager(embedding_service, qdrant_store, AsyncMock())
+        with pytest.raises(MemoryStorageError, match="Vector dimension error"):
+            await manager.store_synthesized_learning(
+                {"title": "Rejected", "knowledge": "Must not be counted"},
+                "test-task",
+            )
+
 
 # ============================================================================
 # TEST 4: Memory retrieval ON → Relevant previous memories ARE retrieved
