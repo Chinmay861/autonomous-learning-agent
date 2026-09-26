@@ -788,29 +788,64 @@ class AgentOrchestrator:
     async def _run_synthesis(self):
         """Run learning synthesis and store in vector memory."""
         if not self._accumulated_learnings:
+            logger.info(f"[Synthesis] No accumulated learnings to synthesize for task {self.task_id}")
             return
         
-        synthesizer = await self._get_synthesizer()
-        synthesized = await synthesizer.synthesize(
-            raw_learnings=self._accumulated_learnings,
-            task_description=self.task_description,
-            task_type=self.task_analysis.task_type if self.task_analysis else "general",
-        )
+        logger.info(f"[Synthesis] Starting synthesis of {len(self._accumulated_learnings)} accumulated learnings for task {self.task_id}")
+        
+        try:
+            synthesizer = await self._get_synthesizer()
+            synthesized = await synthesizer.synthesize(
+                raw_learnings=self._accumulated_learnings,
+                task_description=self.task_description,
+                task_type=self.task_analysis.task_type if self.task_analysis else "general",
+            )
+        except Exception as e:
+            logger.error(f"[Synthesis] LLM synthesis call failed for task {self.task_id}: {e}", exc_info=True)
+            await self.emit_event("synthesis_failed", {
+                "error": f"Synthesis LLM call failed: {str(e)[:200]}",
+                "accumulated_count": len(self._accumulated_learnings),
+            })
+            # Keep learnings for next attempt
+            self._accumulated_learnings = self._accumulated_learnings[-200:]
+            return
+        
+        if not synthesized:
+            logger.warning(f"[Synthesis] LLM returned 0 synthesized units for task {self.task_id} (from {len(self._accumulated_learnings)} raw learnings)")
+            await self.emit_event("synthesis_failed", {
+                "error": "LLM returned 0 synthesized units",
+                "accumulated_count": len(self._accumulated_learnings),
+            })
+            # Clear anyway to avoid re-synthesizing stale learnings forever
+            self._accumulated_learnings = []
+            return
+        
+        logger.info(f"[Synthesis] LLM produced {len(synthesized)} units, now storing in vector memory...")
         
         # Store in vector memory - ALWAYS, regardless of retrieval_enabled.
         # A storage failure must never abort the run: on failure the learnings
         # are retained (trimmed) for the next synthesis attempt.
-        if self.memory_manager and synthesized:
+        if self.memory_manager:
             try:
                 stored_ids = await self.memory_manager.store_batch(synthesized, self.task_id)
             except Exception as e:
-                logger.warning(f"Could not store synthesized learnings: {e}")
+                logger.error(f"[Synthesis] Vector storage failed for task {self.task_id}: {e}", exc_info=True)
+                await self.emit_event("synthesis_failed", {
+                    "error": f"Vector storage failed: {str(e)[:200]}",
+                    "synthesized_count": len(synthesized),
+                })
                 self._accumulated_learnings = self._accumulated_learnings[-200:]
                 return
-            logger.info(f"Stored {len(stored_ids)} synthesized learnings in vector memory")
+            logger.info(f"[Synthesis] ✓ Stored {len(stored_ids)} synthesized learnings in vector memory for task {self.task_id}")
             await self.emit_event("synthesis_completed", {
                 "count": len(synthesized),
                 "stored": len(stored_ids),
+            })
+        else:
+            logger.warning(f"[Synthesis] No memory_manager available — {len(synthesized)} synthesized units were NOT stored!")
+            await self.emit_event("synthesis_failed", {
+                "error": "No memory manager available",
+                "synthesized_count": len(synthesized),
             })
         
         # Clear accumulated learnings that have been synthesized

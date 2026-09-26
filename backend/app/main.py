@@ -123,10 +123,16 @@ app.include_router(ws_router)
 
 @app.get("/api/health")
 async def health_check():
+    from app.config import settings as s
     return {
         "status": "healthy",
-        "database": "sqlite" if "sqlite" in settings.DATABASE_URL else "postgresql",
-        "redis": "connected" if settings.use_redis else "in-process",
-        "qdrant": "in-memory" if settings.QDRANT_URL == ":memory:"
-                  else ("server" if settings.use_qdrant_server else "local-disk"),
+        "database": "sqlite" if "sqlite" in s.DATABASE_URL else "postgresql",
+        "redis": "connected" if s.use_redis else "in-process",
+        "qdrant": "in-memory" if s.QDRANT_URL == ":memory:"
+                  else ("server" if s.use_qdrant_server else "local-disk"),
+        "embedding_provider": s.EMBEDDING_PROVIDER,
+        "hf_token_set": bool(s.HF_TOKEN),
+        "synthesis_interval": s.DEFAULT_SYNTHESIS_INTERVAL,
+        "qdrant_url": s.QDRANT_URL[:60] if s.QDRANT_URL else "",
+        "qdrant_api_key_set": bool(s.QDRANT_API_KEY),
     }

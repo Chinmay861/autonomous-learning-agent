@@ -1,9 +1,12 @@
 import uuid
+import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from app.memory.embeddings import EmbeddingService
 from app.memory.qdrant_store import QdrantStore
 from app.memory.retriever import MemoryRetriever
+
+logger = logging.getLogger(__name__)
 
 class MemoryManager:
     def __init__(self, embedding_service: EmbeddingService, qdrant_store: QdrantStore, retriever: MemoryRetriever):
@@ -42,14 +45,19 @@ class MemoryManager:
         """
         Always stores synthesized learning, handling duplication checks.
         """
+        title = learning.get('title', '')
+        logger.info(f"[Memory] Storing learning '{title[:60]}' for task {task_id}")
+        
         learning_text = (
-            f"Title: {learning.get('title', '')}\n"
+            f"Title: {title}\n"
             f"Knowledge: {learning.get('knowledge', '')}\n"
             f"Conditions: {', '.join(learning.get('conditions', []))}\n"
             f"Exceptions: {', '.join(learning.get('exceptions', []))}"
         )
         
+        logger.debug(f"[Memory] Generating embedding ({self.embedding_service.provider} provider)...")
         vector = await self.embedding_service.embed(learning_text)
+        logger.debug(f"[Memory] Embedding generated ({len(vector)} dims)")
         
         # Check for duplicates
         duplicates = await self.qdrant_store.find_duplicates(vector, threshold=0.92)
@@ -99,10 +107,15 @@ class MemoryManager:
         """
         Store multiple learnings.
         """
+        logger.info(f"[Memory] Storing batch of {len(learnings)} learnings for task {task_id}")
         stored_ids = []
-        for learning in learnings:
-            lid = await self.store_synthesized_learning(learning, task_id)
-            stored_ids.append(lid)
+        for i, learning in enumerate(learnings):
+            try:
+                lid = await self.store_synthesized_learning(learning, task_id)
+                stored_ids.append(lid)
+            except Exception as e:
+                logger.error(f"[Memory] Failed to store learning {i+1}/{len(learnings)}: {e}")
+        logger.info(f"[Memory] Batch complete: {len(stored_ids)}/{len(learnings)} stored successfully")
         return stored_ids
 
     async def get_memory_stats(self) -> Dict:
