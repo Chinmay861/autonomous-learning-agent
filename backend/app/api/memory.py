@@ -1,6 +1,7 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 import logging
+import uuid
 
 from app.database.models import User
 from app.schemas.memory import MemorySearchRequest, MemoryStatsResponse
@@ -67,11 +68,62 @@ async def get_memory_stats(
             recent_additions=0
         )
 
+@router.get("/health")
+async def memory_health(
+    current_user: User = Depends(get_current_user),
+    memory_manager: MemoryManager = Depends(get_memory_manager),
+):
+    """Self-test the full memory pipeline: embeddings, vector store, LLM.
+
+    NOTE: defined before /task/{task_id} so "health" is not captured as a task id.
+    Returns per-check ok/error (never secrets) so a failing pipeline can be
+    diagnosed with one call instead of guessing which stage is broken.
+    """
+    checks: dict = {}
+
+    try:
+        vector = await memory_manager.embedding_service.embed("connectivity probe")
+        checks["embeddings"] = {"ok": True, "dimension": len(vector)}
+    except Exception as e:
+        checks["embeddings"] = {"ok": False, "error": str(e)[:250]}
+
+    try:
+        store = memory_manager.qdrant_store
+        dimension = checks["embeddings"].get("dimension") if checks["embeddings"].get("ok") else 384
+        probe_id = f"health-probe-{uuid.uuid4()}"
+        await store.insert(probe_id, [0.0] * dimension, {"probe": True, "task_id": "health"})
+        hits = await store.search([0.0] * dimension, limit=1, min_score=0.0)
+        await store.delete(probe_id)
+        checks["qdrant"] = {
+            "ok": True,
+            "mode": getattr(store, "mode", "unknown"),
+            "hits": len(hits or []),
+        }
+    except Exception as e:
+        checks["qdrant"] = {"ok": False, "error": str(e)[:250]}
+
+    try:
+        from app.models.llm_provider import get_llm_provider
+
+        llm = get_llm_provider()
+        models = await llm.list_models()
+        checks["llm"] = {
+            "ok": True,
+            "model": getattr(llm, "model", "?"),
+            "models_visible": len(models or []),
+        }
+    except Exception as e:
+        checks["llm"] = {"ok": False, "error": str(e)[:250]}
+
+    overall = all(check.get("ok") for check in checks.values())
+    return {"ok": overall, "checks": checks}
+
+
 @router.get("/task/{task_id}")
 async def get_task_memories(
     task_id: str,
     current_user: User = Depends(get_current_user),
-    memory_manager: MemoryManager = Depends(get_memory_manager)
+    memory_manager: MemoryManager = Depends(get_memory_manager),
 ):
     try:
         return await memory_manager.qdrant_store.get_all_by_task(task_id)

@@ -174,6 +174,13 @@ class ApiClient {
     return this.fetchWithAuth('/memory/stats');
   }
 
+  async getMemoryHealth(): Promise<{
+    ok: boolean;
+    checks: Record<string, { ok: boolean; error?: string }>;
+  }> {
+    return this.fetchWithAuth('/memory/health');
+  }
+
   // Settings
   async getSettings(): Promise<Settings> {
     return this.fetchWithAuth('/settings');

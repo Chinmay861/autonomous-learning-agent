@@ -11,10 +11,33 @@ const MemoryExplorerPage = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [searched, setSearched] = useState(false);
+  const [diag, setDiag] = useState<null | {
+    ok: boolean;
+    checks: Record<string, { ok: boolean; error?: string }>;
+  }>(null);
+  const [diagLoading, setDiagLoading] = useState(false);
 
   useEffect(() => {
     fetchStats();
   }, []);
+
+  useEffect(() => {
+    runDiagnostics();
+  }, []);
+
+  const runDiagnostics = async () => {
+    setDiagLoading(true);
+    try {
+      setDiag(await api.getMemoryHealth());
+    } catch {
+      setDiag({
+        ok: false,
+        checks: { api: { ok: false, error: 'The diagnostics request itself failed.' } },
+      });
+    } finally {
+      setDiagLoading(false);
+    }
+  };
 
   const fetchStats = async () => {
     try {
@@ -59,6 +82,31 @@ const MemoryExplorerPage = () => {
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <h1 className="text-2xl font-bold">Memory Explorer</h1>
+
+      {diag && !diag.ok && (
+        <div role="alert" className="rounded-lg border border-amber-700/60 bg-amber-950 px-4 py-3 text-sm text-amber-200">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="font-semibold">Memory service issue detected</span>
+            <button
+              type="button"
+              onClick={runDiagnostics}
+              disabled={diagLoading}
+              className="btn-secondary px-3 py-1 text-xs"
+            >
+              {diagLoading ? 'Checking…' : 'Re-check'}
+            </button>
+          </div>
+          <ul className="mt-2 space-y-1">
+            {Object.entries(diag.checks).map(([name, check]) =>
+              !check.ok ? (
+                <li key={name}>
+                  • {name}: {check.error || 'failed'}
+                </li>
+              ) : null
+            )}
+          </ul>
+        </div>
+      )}
 
       {stats && (
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
