@@ -53,16 +53,24 @@ class MemoryManager:
         title = learning.get('title', '')
         logger.info(f"[Memory] Storing learning '{title[:60]}' for task {task_id}")
         
+        # Safely coerce conditions/exceptions — LLMs return null, strings, or lists
+        conditions = learning.get('conditions') or []
+        if isinstance(conditions, str):
+            conditions = [conditions]
+        exceptions = learning.get('exceptions') or []
+        if isinstance(exceptions, str):
+            exceptions = [exceptions]
+        
         learning_text = (
             f"Title: {title}\n"
             f"Knowledge: {learning.get('knowledge', '')}\n"
-            f"Conditions: {', '.join(learning.get('conditions', []))}\n"
-            f"Exceptions: {', '.join(learning.get('exceptions', []))}"
+            f"Conditions: {', '.join(str(c) for c in conditions)}\n"
+            f"Exceptions: {', '.join(str(e) for e in exceptions)}"
         )
         
-        logger.debug(f"[Memory] Generating embedding ({self.embedding_service.provider} provider)...")
+        logger.info(f"[Memory] Generating embedding ({self.embedding_service.provider} provider)...")
         vector = await self.embedding_service.embed(learning_text)
-        logger.debug(f"[Memory] Embedding generated ({len(vector)} dims)")
+        logger.info(f"[Memory] Embedding generated ({len(vector)} dims)")
         
         # Check for duplicates
         duplicates = await self.qdrant_store.find_duplicates(vector, threshold=0.92)

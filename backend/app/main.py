@@ -133,6 +133,73 @@ async def health_check():
         "embedding_provider": s.EMBEDDING_PROVIDER,
         "hf_token_set": bool(s.HF_TOKEN),
         "synthesis_interval": s.DEFAULT_SYNTHESIS_INTERVAL,
-        "qdrant_url": s.QDRANT_URL[:60] if s.QDRANT_URL else "",
+        "qdrant_url": s.QDRANT_URL[:80] if s.QDRANT_URL else "",
         "qdrant_api_key_set": bool(s.QDRANT_API_KEY),
     }
+
+
+@app.get("/api/debug/memory-test")
+async def debug_memory_test():
+    """End-to-end memory pipeline test (no auth needed for diagnostics).
+    
+    Tests: embed text → insert into Qdrant → scroll to verify → delete probe.
+    Reports exactly which stage fails so the root cause is obvious.
+    """
+    import uuid as _uuid
+    results = {"steps": {}}
+    
+    # Step 1: Test embedding
+    try:
+        mm = app.state.memory_manager
+        vector = await mm.embedding_service.embed("diagnostic probe text for memory pipeline test")
+        results["steps"]["1_embed"] = {"ok": True, "dims": len(vector), "provider": mm.embedding_service.provider}
+    except Exception as e:
+        results["steps"]["1_embed"] = {"ok": False, "error": str(e)[:300]}
+        results["overall"] = "FAILED at embedding"
+        return results
+    
+    # Step 2: Test Qdrant insert
+    probe_id = f"debug-probe-{_uuid.uuid4()}"
+    try:
+        inserted = await mm.qdrant_store.insert(probe_id, vector, {
+            "task_id": "__debug__",
+            "title": "Memory pipeline test probe",
+            "knowledge": "This is a diagnostic test point",
+            "category": "debug",
+            "confidence": 0.99,
+            "generalizable": False,
+            "created_at": "2026-01-01T00:00:00",
+        })
+        results["steps"]["2_qdrant_insert"] = {"ok": inserted, "probe_id": probe_id}
+        if not inserted:
+            results["overall"] = "FAILED at Qdrant insert (returned False)"
+            return results
+    except Exception as e:
+        results["steps"]["2_qdrant_insert"] = {"ok": False, "error": str(e)[:300]}
+        results["overall"] = "FAILED at Qdrant insert"
+        return results
+    
+    # Step 3: Verify via scroll
+    try:
+        payloads = await mm.qdrant_store.scroll_payloads(limit=100)
+        found = any(p.get("task_id") == "__debug__" for p in payloads)
+        results["steps"]["3_qdrant_scroll"] = {"ok": True, "total_points": len(payloads), "probe_found": found}
+    except Exception as e:
+        results["steps"]["3_qdrant_scroll"] = {"ok": False, "error": str(e)[:300]}
+    
+    # Step 4: Verify via stats
+    try:
+        stats = await mm.get_memory_stats()
+        results["steps"]["4_stats"] = {"ok": True, **stats}
+    except Exception as e:
+        results["steps"]["4_stats"] = {"ok": False, "error": str(e)[:300]}
+    
+    # Step 5: Cleanup
+    try:
+        await mm.qdrant_store.delete(probe_id)
+        results["steps"]["5_cleanup"] = {"ok": True}
+    except Exception as e:
+        results["steps"]["5_cleanup"] = {"ok": False, "error": str(e)[:300]}
+    
+    results["overall"] = "ALL STEPS PASSED"
+    return results

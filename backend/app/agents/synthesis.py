@@ -94,18 +94,26 @@ class LearningSynthesizer:
                     source_iterations = 1
 
                 # Ensure all required fields exist
+                # LLMs frequently return null or a bare string for list fields.
+                raw_conditions = unit.get('conditions') or []
+                if isinstance(raw_conditions, str):
+                    raw_conditions = [raw_conditions]
+                raw_exceptions = unit.get('exceptions') or []
+                if isinstance(raw_exceptions, str):
+                    raw_exceptions = [raw_exceptions]
+                
                 clean_unit = {
                     'title': unit.get('title', 'Unknown'),
                     'knowledge': unit.get('knowledge', ''),
                     'category': unit.get('category', category),
-                    'conditions': unit.get('conditions', []),
-                    'exceptions': unit.get('exceptions', []),
-                    'evidence_summary': unit.get('evidence_summary', ''),
+                    'conditions': raw_conditions,
+                    'exceptions': raw_exceptions,
+                    'evidence_summary': unit.get('evidence_summary', '') or '',
                     'source_iterations': source_iterations,
                     'confidence': float(unit.get('confidence', 0.5)),
                     'generalizable': bool(unit.get('generalizable', False)),
-                    'task_type': unit.get('task_type', task_type),
-                    'applicability': unit.get('applicability', '')
+                    'task_type': unit.get('task_type', task_type) or task_type,
+                    'applicability': unit.get('applicability', '') or ''
                 }
                 unique_results.append(clean_unit)
                 seen_titles.add(title)
