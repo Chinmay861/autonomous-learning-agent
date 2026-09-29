@@ -102,7 +102,7 @@ class QdrantStore:
             return inserted
         except Exception as e:
             self.last_error = str(e)
-            logger.error(f"Error inserting to Qdrant: {e}")
+            logger.error(f"Error inserting to Qdrant (collection={self.collection_name}, mode={self.mode}, id={id}): {e}", exc_info=True)
             return False
 
     async def search(self, query_vector: list[float], limit: int = 5, min_score: float = 0.65, filters: Optional[dict] = None) -> list[dict]:
@@ -180,7 +180,9 @@ class QdrantStore:
             
         try:
             return await asyncio.to_thread(_delete_sync)
-        except Exception:
+        except Exception as e:
+            self.last_error = str(e)
+            logger.error(f"Error deleting from Qdrant (collection={self.collection_name}, id={id}): {e}", exc_info=True)
             return False
 
     async def find_duplicates(self, vector: list[float], threshold: float = 0.92) -> list[dict]:

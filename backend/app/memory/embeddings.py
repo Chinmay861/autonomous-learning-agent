@@ -106,16 +106,39 @@ class EmbeddingService:
     def _normalize_hf_response(data: Any, expected: int) -> List[List[float]]:
         """Normalize feature-extraction output to a list of vectors.
 
-        A single input yields one vector; a batch yields one vector per input.
+        Depending on the Inference API provider, feature extraction may return
+        pooled vectors or one vector per token. Pool token vectors so the
+        result always matches the configured Qdrant vector dimension.
         """
         if not isinstance(data, list):
             raise RuntimeError(f"Unexpected HF embedding response: {str(data)[:120]}")
+
         if data and isinstance(data[0], (int, float)):
             vectors = [data]
+        elif expected == 1 and data and isinstance(data[0], list) and data[0] and isinstance(data[0][0], list):
+            vectors = [EmbeddingService._mean_pool(data[0])]
+        elif data and isinstance(data[0], list) and data[0] and isinstance(data[0][0], list):
+            vectors = [EmbeddingService._mean_pool(tokens) for tokens in data]
         else:
             vectors = data
-        if len(vectors) != expected:
+
+        if len(vectors) != expected or any(
+            not isinstance(vector, list) or not vector or not isinstance(vector[0], (int, float))
+            for vector in vectors
+        ):
             raise RuntimeError(
                 f"HF embedding count mismatch: got {len(vectors)} vectors for {expected} inputs"
             )
         return [[float(x) for x in vector] for vector in vectors]
+
+    @staticmethod
+    def _mean_pool(token_vectors: List[List[float]]) -> List[float]:
+        if not token_vectors or not all(token_vectors):
+            raise RuntimeError("HF embedding response contained no token vectors")
+        dimension = len(token_vectors[0])
+        if any(len(vector) != dimension for vector in token_vectors):
+            raise RuntimeError("HF embedding token vectors have inconsistent dimensions")
+        return [
+            sum(float(vector[index]) for vector in token_vectors) / len(token_vectors)
+            for index in range(dimension)
+        ]

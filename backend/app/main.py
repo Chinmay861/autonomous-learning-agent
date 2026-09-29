@@ -142,15 +142,28 @@ async def health_check():
 async def debug_memory_test():
     """End-to-end memory pipeline test (no auth needed for diagnostics).
     
-    Tests: embed text → insert into Qdrant → scroll to verify → delete probe.
+    Tests: ensure collection → embed text → insert into Qdrant → scroll to verify → cleanup.
     Reports exactly which stage fails so the root cause is obvious.
     """
     import uuid as _uuid
     results = {"steps": {}}
+    mm = app.state.memory_manager
+
+    # Step 0: Ensure Qdrant collection exists
+    try:
+        await mm.qdrant_store.initialize()
+        results["steps"]["0_collection_init"] = {
+            "ok": True,
+            "mode": mm.qdrant_store.mode,
+            "collection": mm.qdrant_store.collection_name,
+        }
+    except Exception as e:
+        results["steps"]["0_collection_init"] = {"ok": False, "error": str(e)[:300]}
+        results["overall"] = "FAILED at Qdrant collection init"
+        return results
     
     # Step 1: Test embedding
     try:
-        mm = app.state.memory_manager
         vector = await mm.embedding_service.embed("diagnostic probe text for memory pipeline test")
         results["steps"]["1_embed"] = {"ok": True, "dims": len(vector), "provider": mm.embedding_service.provider}
     except Exception as e:
@@ -158,10 +171,10 @@ async def debug_memory_test():
         results["overall"] = "FAILED at embedding"
         return results
     
-    # Step 2: Test Qdrant insert
-    probe_id = f"debug-probe-{_uuid.uuid4()}"
+    # Step 2: Test Qdrant insert (use proper UUID, not prefixed string)
+    probe_uuid = str(_uuid.uuid4())
     try:
-        inserted = await mm.qdrant_store.insert(probe_id, vector, {
+        inserted = await mm.qdrant_store.insert(probe_uuid, vector, {
             "task_id": "__debug__",
             "title": "Memory pipeline test probe",
             "knowledge": "This is a diagnostic test point",
@@ -170,22 +183,32 @@ async def debug_memory_test():
             "generalizable": False,
             "created_at": "2026-01-01T00:00:00",
         })
-        results["steps"]["2_qdrant_insert"] = {"ok": inserted, "probe_id": probe_id}
+        qdrant_err = getattr(mm.qdrant_store, 'last_error', None)
+        results["steps"]["2_qdrant_insert"] = {
+            "ok": inserted,
+            "probe_id": probe_uuid,
+            "last_error": qdrant_err,
+        }
         if not inserted:
-            results["overall"] = "FAILED at Qdrant insert (returned False)"
+            results["overall"] = f"FAILED at Qdrant insert: {qdrant_err}"
             return results
     except Exception as e:
         results["steps"]["2_qdrant_insert"] = {"ok": False, "error": str(e)[:300]}
-        results["overall"] = "FAILED at Qdrant insert"
+        results["overall"] = "FAILED at Qdrant insert (exception)"
         return results
     
     # Step 3: Verify via scroll
     try:
         payloads = await mm.qdrant_store.scroll_payloads(limit=100)
         found = any(p.get("task_id") == "__debug__" for p in payloads)
-        results["steps"]["3_qdrant_scroll"] = {"ok": True, "total_points": len(payloads), "probe_found": found}
+        results["steps"]["3_qdrant_scroll"] = {"ok": found, "total_points": len(payloads), "probe_found": found}
+        if not found:
+            results["overall"] = "FAILED at Qdrant scroll verification"
+            return results
     except Exception as e:
         results["steps"]["3_qdrant_scroll"] = {"ok": False, "error": str(e)[:300]}
+        results["overall"] = "FAILED at Qdrant scroll verification"
+        return results
     
     # Step 4: Verify via stats
     try:
@@ -193,13 +216,20 @@ async def debug_memory_test():
         results["steps"]["4_stats"] = {"ok": True, **stats}
     except Exception as e:
         results["steps"]["4_stats"] = {"ok": False, "error": str(e)[:300]}
+        results["overall"] = "FAILED at memory stats"
+        return results
     
     # Step 5: Cleanup
     try:
-        await mm.qdrant_store.delete(probe_id)
-        results["steps"]["5_cleanup"] = {"ok": True}
+        cleaned = await mm.qdrant_store.delete(probe_uuid)
+        results["steps"]["5_cleanup"] = {"ok": cleaned}
+        if not cleaned:
+            results["overall"] = "FAILED at Qdrant cleanup"
+            return results
     except Exception as e:
         results["steps"]["5_cleanup"] = {"ok": False, "error": str(e)[:300]}
+        results["overall"] = "FAILED at Qdrant cleanup"
+        return results
     
     results["overall"] = "ALL STEPS PASSED"
     return results
