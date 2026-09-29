@@ -274,6 +274,14 @@ class AgentOrchestrator:
                 
                 # Execute one iteration
                 task_complete = await self._execute_iteration()
+
+                if not task_complete and self._should_stop_for_stagnation():
+                    self.state.completion_status = "stopped"
+                    await self.emit_event("task_stopped", {
+                        "reason": "repeated_ineffective_action",
+                        "iterations": self.state.iteration,
+                    })
+                    break
                 
                 # Checkpoint every 10 iterations
                 if self.state.iteration % 10 == 0:
@@ -432,6 +440,19 @@ class AgentOrchestrator:
             previous_learnings=[l.get("learning", "") for l in self._accumulated_learnings[-20:]],
             iteration=iteration,
         )
+
+        if not learnings:
+            # Keep the persistence pipeline productive when the optional
+            # extraction response is empty or malformed.
+            outcome = (result.output or result.error or "No observable result").strip()
+            learnings = [{
+                "category": "OBSERVATION",
+                "learning": f"Action outcome: {outcome[:500]}",
+                "evidence": f"Iteration {iteration}: {json.dumps(action, default=str)}",
+                "confidence": 0.3,
+                "conditions": [],
+                "quality_score": 0.4,
+            }]
         
         for learning in learnings:
             learning["iteration"] = iteration
@@ -682,18 +703,13 @@ class AgentOrchestrator:
         return False
     
     def _loop_warning(self, window: int = 4) -> str:
-        """Detect tight request loops (equivalent consecutive actions).
+        """Detect tight action loops (equivalent consecutive actions).
 
-        Open-ended tasks have no natural end state, so an agent can burn the
-        whole iteration budget re-issuing equivalent requests (same tool,
-        method and host). When the recent history shows such a loop, return a
-        directive for the planner; otherwise return "".
+        Open-ended tasks can burn the whole iteration budget re-issuing an
+        equivalent action. HTTP tasks use a coarse request signature; other
+        environments use the complete action so repeated code is also visible.
         """
-        # Only HTTP-style tasks loop this way; grid/maze agents legitimately
-        # repeat moves (e.g. walking a straight corridor).
         from app.environments.http_env import HTTPEnvironment
-        if not isinstance(self.environment, HTTPEnvironment):
-            return ""
         from urllib.parse import urlparse
 
         def _signature(action: Any) -> str | None:
@@ -718,7 +734,10 @@ class AgentOrchestrator:
                 except Exception:
                     host = str(url).lower()
             direction = str(merged.get("direction") or "").lower()
-            signature = "|".join(part for part in (tool, method, host, direction) if part)
+            if isinstance(self.environment, HTTPEnvironment):
+                signature = "|".join(part for part in (tool, method, host, direction) if part)
+            else:
+                signature = json.dumps(action, sort_keys=True, default=str)
             return signature or None
 
         recent = [
@@ -733,6 +752,19 @@ class AgentOrchestrator:
                 "goal with a different action, or state what is blocking completion."
             )
         return ""
+
+    def _should_stop_for_stagnation(self, window: int = 3) -> bool:
+        """Stop when the same action repeatedly produces no progress."""
+        recent = self.state.action_history[-window:]
+        if len(recent) < window:
+            return False
+        actions = [json.dumps(entry.get("action", {}), sort_keys=True, default=str) for entry in recent]
+        results = [entry.get("result_summary", "") for entry in recent]
+        return (
+            len(set(actions)) == 1
+            and len(set(results)) == 1
+            and all(not entry.get("success") or entry.get("reward", 0) <= 0 for entry in recent)
+        )
 
     def _get_history_summary(self) -> str:
         """Get a brief summary of recent history for context."""
@@ -806,9 +838,7 @@ class AgentOrchestrator:
                 "error": f"Synthesis LLM call failed: {str(e)[:200]}",
                 "accumulated_count": len(self._accumulated_learnings),
             })
-            # Keep learnings for next attempt
-            self._accumulated_learnings = self._accumulated_learnings[-200:]
-            return
+            synthesized = self._fallback_memory_units()
         
         if not synthesized:
             logger.warning(f"[Synthesis] LLM returned 0 synthesized units for task {self.task_id} (from {len(self._accumulated_learnings)} raw learnings)")
@@ -816,9 +846,10 @@ class AgentOrchestrator:
                 "error": "LLM returned 0 synthesized units",
                 "accumulated_count": len(self._accumulated_learnings),
             })
-            # Clear anyway to avoid re-synthesizing stale learnings forever
-            self._accumulated_learnings = []
-            return
+            synthesized = self._fallback_memory_units()
+            if not synthesized:
+                self._accumulated_learnings = self._accumulated_learnings[-200:]
+                return
         
         logger.info(f"[Synthesis] LLM produced {len(synthesized)} units, now storing in vector memory...")
         
@@ -864,6 +895,27 @@ class AgentOrchestrator:
         
         # Clear accumulated learnings that have been synthesized
         self._accumulated_learnings = []
+
+    def _fallback_memory_units(self) -> list[dict]:
+        """Create storable memory units when synthesis returns no usable JSON."""
+        units = []
+        for learning in self._accumulated_learnings[-20:]:
+            text = str(learning.get("learning", "")).strip()
+            if not text:
+                continue
+            units.append({
+                "title": text[:80],
+                "knowledge": text,
+                "category": learning.get("category", "OBSERVATION"),
+                "conditions": learning.get("conditions") or [],
+                "exceptions": learning.get("exceptions") or [],
+                "evidence_summary": learning.get("evidence", ""),
+                "source_iterations": learning.get("iteration", 1),
+                "confidence": learning.get("confidence", 0.5),
+                "generalizable": False,
+                "task_type": self.task_analysis.task_type if self.task_analysis else "general",
+            })
+        return units
     
     # ================================================================
     # CONTROL METHODS

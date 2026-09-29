@@ -58,8 +58,9 @@ def get_environment_for_task(task_config: dict, llm=None) -> Environment:
     if any(k in combined for k in bench_keywords) and not any(k in combined for k in ["python", "code", "http", "api"]):
         return BenchmarkEnvironment()
 
-    # 3. Python Code Execution tasks
-    python_keywords = ["python", "script", "run code", "code execution", "function", "program"]
+    # 3. Python Code Execution tasks. Keep this explicit: words such as
+    # "function" and "program" also occur in ordinary non-code tasks.
+    python_keywords = ["python", "python code", "python script", "run code", "execute code", "code execution"]
     if any(k in combined for k in python_keywords):
         return PythonEnvironment()
 
