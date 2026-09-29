@@ -68,7 +68,12 @@ class EmbeddingService:
                 "EMBEDDING_PROVIDER=hf requires HF_TOKEN (a free Hugging Face token "
                 "with Inference Providers access)."
             )
-        url = HF_INFERENCE_URL.format(model=self.model_name)
+        # HF Inference requires the full org/model path.
+        # Local sentence-transformers uses just "all-MiniLM-L6-v2", so auto-prefix.
+        hf_model = self.model_name
+        if "/" not in hf_model:
+            hf_model = f"sentence-transformers/{hf_model}"
+        url = HF_INFERENCE_URL.format(model=hf_model)
         headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
 
         last_error: Exception | None = None
