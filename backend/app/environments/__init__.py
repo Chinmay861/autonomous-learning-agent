@@ -36,6 +36,16 @@ def get_environment_for_task(task_config: dict, llm=None) -> Environment:
     desc = (task_config.get("description") or "").lower()
     combined = f"{title} {desc}"
 
+    # Explicit executable interfaces take precedence over simulation words.
+    # For example, "write a Python maze solver" is a coding task, not a maze
+    # interaction task.
+    python_keywords = ["python", "python code", "python script", "run code", "execute code", "code execution"]
+    if any(k in combined for k in python_keywords):
+        return PythonEnvironment()
+
+    if _is_explicit_http_task(combined):
+        return HTTPEnvironment()
+
     # 0. Persistent Maze Learning Benchmark (key/door/trap maze semantics)
     maze_markers = ("locked door", "key", "trap", "k = key", "d = locked")
     if ("maze" in combined or "grid" in combined) and any(marker in combined for marker in maze_markers):
@@ -49,25 +59,21 @@ def get_environment_for_task(task_config: dict, llm=None) -> Environment:
         )
 
     # 1. Grid World / Navigation tasks
-    grid_keywords = ["grid", "treasure", "obstacle", "coordinate", "move up", "move down", "maze", "5x5", "(1,1)", "(1, 1)"]
+    grid_keywords = [
+        "grid", "treasure", "maze", "5x5", "(1,1)", "(1, 1)",
+        "move up", "move down", "move left", "move right", "navigate",
+    ]
     if any(k in combined for k in grid_keywords):
         return GridWorldEnvironment(task_description=task_config.get("description", ""))
 
     # 2. Benchmark Number Optimization game
-    bench_keywords = ["benchmark", "increase", "decrease", "boost", "stabilize", "hidden mechanics", "hidden rules", "score 100", "stability"]
-    if any(k in combined for k in bench_keywords) and not any(k in combined for k in ["python", "code", "http", "api"]):
+    bench_markers = ["benchmark", "hidden mechanics", "hidden rules", "score 100", "stability"]
+    optimization_verbs = ["increase", "decrease", "boost", "stabilize"]
+    if (
+        any(k in combined for k in bench_markers)
+        or ("score" in combined and any(k in combined for k in optimization_verbs))
+    ):
         return BenchmarkEnvironment()
-
-    # 3. Python Code Execution tasks. Keep this explicit: words such as
-    # "function" and "program" also occur in ordinary non-code tasks.
-    python_keywords = ["python", "python code", "python script", "run code", "execute code", "code execution"]
-    if any(k in combined for k in python_keywords):
-        return PythonEnvironment()
-
-    # 4. HTTP / Web API tasks. A mere mention of API/URL is not enough: text
-    # simulations frequently use those words without exposing a web service.
-    if _is_explicit_http_task(combined):
-        return HTTPEnvironment()
 
     # 5. Default: Universal Interactive Simulation
     return UniversalSimulationEnvironment(task_description=task_config.get("description", ""), llm=llm)

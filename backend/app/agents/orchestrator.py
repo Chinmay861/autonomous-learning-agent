@@ -763,7 +763,6 @@ class AgentOrchestrator:
         return (
             len(set(actions)) == 1
             and len(set(results)) == 1
-            and all(not entry.get("success") or entry.get("reward", 0) <= 0 for entry in recent)
         )
 
     def _get_history_summary(self) -> str:
