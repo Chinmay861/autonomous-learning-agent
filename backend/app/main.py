@@ -231,5 +231,52 @@ async def debug_memory_test():
         results["overall"] = "FAILED at Qdrant cleanup"
         return results
     
-    results["overall"] = "ALL STEPS PASSED"
+    # Step 6: Test search_memories (same path the Memory Explorer UI uses)
+    # Insert a fresh probe, search semantically, verify match, cleanup
+    search_probe_uuid = str(_uuid.uuid4())
+    try:
+        search_vector = await mm.embedding_service.embed("unique diagnostic knowledge about pipeline testing")
+        await mm.qdrant_store.insert(search_probe_uuid, search_vector, {
+            "task_id": "__search_test__",
+            "title": "Pipeline search test",
+            "knowledge": "Unique diagnostic knowledge about pipeline testing procedures",
+            "learning_text": "Unique diagnostic knowledge about pipeline testing procedures",
+            "category": "debug",
+            "confidence": 0.95,
+            "generalizable": False,
+            "created_at": "2026-01-01T00:00:00",
+        })
+        # Now search using the Memory Explorer path
+        search_results = await mm.search_memories(
+            query="pipeline testing procedures",
+            top_k=5,
+            min_similarity=0.3,
+        )
+        found_probe = any(
+            r.get("id") == search_probe_uuid or
+            "pipeline testing" in (r.get("content") or "").lower()
+            for r in search_results
+        )
+        results["steps"]["6_search"] = {
+            "ok": found_probe,
+            "results_count": len(search_results),
+            "probe_found": found_probe,
+            "sample_ids": [r.get("id") for r in search_results[:3]],
+        }
+        # Cleanup search probe
+        await mm.qdrant_store.delete(search_probe_uuid)
+        if not found_probe:
+            results["overall"] = "FAILED at search: probe not found in results"
+            return results
+    except Exception as e:
+        results["steps"]["6_search"] = {"ok": False, "error": str(e)[:300]}
+        # Try cleanup
+        try:
+            await mm.qdrant_store.delete(search_probe_uuid)
+        except Exception:
+            pass
+        results["overall"] = f"FAILED at search test: {str(e)[:150]}"
+        return results
+    
+    results["overall"] = "ALL STEPS PASSED (including search)"
     return results
