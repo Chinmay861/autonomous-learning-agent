@@ -51,7 +51,7 @@ class GridWorldEnvironment(Environment):
         distance = abs(self.x - self.goal_pos[0]) + abs(self.y - self.goal_pos[1])
         status = "Treasure Found!" if self.found_treasure else "Exploring"
         desc = (
-            f"Grid: 5x5 grid from (1,1) bottom-left to (5,5) top-right. "
+            f"Grid: {self.width}x{self.height} grid from (1,1) bottom-left to ({self.width},{self.height}) top-right. "
             f"Current position: ({self.x}, {self.y}). Target treasure: ({self.goal_pos[0]}, {self.goal_pos[1]}). "
             f"Manhattan distance to treasure: {distance}. Moves made: {self.step_count}. "
             f"Known obstacles: {sorted(list(self.known_obstacles)) if self.known_obstacles else 'None discovered yet'}. "
