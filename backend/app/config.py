@@ -1,20 +1,15 @@
-import os
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from typing import List
+
 
 class Settings(BaseSettings):
-    # Database - defaults to SQLite for zero-setup local development
+    # --- Database: SQLite by default, Postgres URLs (Render/Heroku/Neon) accepted as-is.
     DATABASE_URL: str = "sqlite+aiosqlite:///./storage/agent.db"
 
     @field_validator("DATABASE_URL", mode="before")
     @classmethod
     def _normalize_database_url(cls, value):
-        """Accept managed-Postgres URLs (Render, Heroku, Neon) as-is.
-
-        Converts the scheme to SQLAlchemy's asyncpg driver and translates
-        `sslmode=` (libpq) to `ssl=` (asyncpg).
-        """
+        """Convert libpq-style Postgres URLs to SQLAlchemy's asyncpg driver."""
         if not isinstance(value, str):
             return value
         if value.startswith("postgres://"):
@@ -24,74 +19,65 @@ class Settings(BaseSettings):
         if value.startswith("postgresql+asyncpg://") and "sslmode=" in value:
             value = value.replace("sslmode=require", "ssl=require").replace("sslmode=prefer", "ssl=prefer")
         return value
-    
-    # Redis - optional, set to empty string to use in-process mode
-    REDIS_URL: str = ""
-    
-    # Qdrant - set to ":memory:" for in-process mode (no Docker needed)
-    QDRANT_URL: str = ":memory:"
-    QDRANT_COLLECTION: str = "agent_learnings"
-    QDRANT_API_KEY: str = ""
-    
-    OLLAMA_BASE_URL: str = "http://localhost:11434"
+
+    # --- LLM
+    # Provider used when a model string has no "<provider>:" prefix.
+    LLM_PROVIDER: str = "ollama"  # ollama | groq | openai | gemini | openrouter | custom
     PRIMARY_MODEL: str = "qwen3:4b"
-    FAST_MODEL: str = "qwen3:4b"
-    SYNTHESIS_MODEL: str = "qwen3:4b"
-    DEFAULT_TEMPERATURE: float = 0.7
-    
-    # Cloud LLM Support (Groq, OpenAI, Gemini, OpenRouter)
-    LLM_PROVIDER: str = "ollama"  # "ollama" | "groq" | "openai" | "gemini" | "openrouter"
+    CLOUD_MODEL: str = ""  # legacy alias: used as the default model when set
+    DEFAULT_TEMPERATURE: float = 0.3
+    LLM_MAX_TOKENS: int = 2048
+    LLM_TIMEOUT_SECONDS: float = 90.0
+    # Optional reasoning effort for reasoning models (e.g. "low" for gpt-oss). Empty = provider default.
+    LLM_REASONING_EFFORT: str = ""
+
+    OLLAMA_BASE_URL: str = "http://localhost:11434"
     CLOUD_API_KEY: str = ""
     CLOUD_BASE_URL: str = ""
-    CLOUD_MODEL: str = ""
     GROQ_API_KEY: str = ""
     GEMINI_API_KEY: str = ""
     OPENAI_API_KEY: str = ""
     OPENROUTER_API_KEY: str = ""
-    
-    EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
-    EMBEDDING_DIMENSION: int = 384
-    # "local" runs sentence-transformers in-process (needs torch, ~1GB RAM);
-    # "hf" calls Hugging Face Inference (same weights, needs HF_TOKEN, tiny RAM).
-    EMBEDDING_PROVIDER: str = "local"
-    HF_TOKEN: str = ""
-    
+
+    # --- Auth
     SECRET_KEY: str = "change-me-to-a-random-secret-key-in-production"
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRATION_MINUTES: int = 1440
-    
-    DEFAULT_MAX_ITERATIONS: int = 100
-    DEFAULT_SNAPSHOT_INTERVAL: int = 50
-    DEFAULT_SYNTHESIS_INTERVAL: int = 10
-    DEFAULT_TOP_K: int = 5
-    DEFAULT_MIN_SIMILARITY: float = 0.65
-    DEFAULT_USE_PERSISTENT_LEARNING: bool = False
-    
-    STORAGE_DIR: str = "./storage"
-    
-    TOOL_PERMISSION_PYTHON: str = "LIMITED"
-    TOOL_PERMISSION_SHELL: str = "READ_ONLY"
-    TOOL_PERMISSION_HTTP: str = "LIMITED"
-    TOOL_PERMISSION_FILE: str = "READ_ONLY"
-    
-    SANDBOX_TIMEOUT_SECONDS: int = 30
-    SANDBOX_MAX_MEMORY_MB: int = 512
-    
-    BACKEND_HOST: str = "0.0.0.0"
-    BACKEND_PORT: int = 8000
-    FRONTEND_URL: str = "http://localhost:5173"
-    CORS_ORIGINS: List[str] = ["http://localhost:5173", "http://localhost:3000"]
-    
+
+    # --- Agents
+    # Experiments use the code-only learning agents (no LLM). The LLM agents are kept in the
+    # codebase but disabled; set ENABLE_LLM_AGENTS=true to allow agent_type="llm" again.
+    ENABLE_LLM_AGENTS: bool = False
+    # Pause between move rounds in "watch" speed, so a person can follow the boards.
+    WATCH_MOVE_DELAY_MS: int = 350
+
+    # --- Experiment defaults and limits
+    DEFAULT_NUM_GAMES: int = 500
+    MAX_NUM_GAMES: int = 5000
+    # How many playbook lessons the memory agent sees in each move prompt.
+    PLAYBOOK_PROMPT_LIMIT: int = 12
+    # Active lessons kept per user; the weakest are retired beyond this.
+    PLAYBOOK_MAX_ACTIVE: int = 40
+    # Optional pause between moves (seconds) to stay under provider rate limits.
+    MOVE_DELAY_SECONDS: float = 0.0
+    # Consecutive LLM failures before an agent's run is aborted.
+    MAX_CONSECUTIVE_LLM_ERRORS: int = 5
+    # Moves the agent may play from one LLM call when it is certain of them (1 = one call per move).
+    MAX_MOVES_PER_TURN: int = 8
+
+    # --- Server
+    # Comma-separated list of allowed browser origins, or "*".
+    CORS_ORIGINS: str = "*"
+
     @property
-    def use_redis(self) -> bool:
-        """Check if Redis is configured."""
-        return bool(self.REDIS_URL)
-    
+    def default_model(self) -> str:
+        return self.CLOUD_MODEL or self.PRIMARY_MODEL
+
     @property
-    def use_qdrant_server(self) -> bool:
-        """Check if using a remote Qdrant server (vs in-memory or local disk path)."""
-        return self.QDRANT_URL.startswith("http://") or self.QDRANT_URL.startswith("https://")
-    
+    def cors_origins(self) -> list[str]:
+        return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()] or ["*"]
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
 
 settings = Settings()

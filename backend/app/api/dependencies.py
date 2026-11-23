@@ -1,15 +1,7 @@
-from typing import AsyncGenerator
 from fastapi import Request
 
-async def get_redis(request: Request):
-    return request.app.state.redis
+from app.experiments.manager import ExperimentManager
 
-async def get_job_manager(request: Request):
-    return request.app.state.job_manager
 
-async def get_memory_manager(request: Request):
-    return request.app.state.memory_manager
-
-async def get_file_storage(request: Request):
-    return request.app.state.file_storage
-
+async def get_manager(request: Request) -> ExperimentManager:
+    return request.app.state.manager

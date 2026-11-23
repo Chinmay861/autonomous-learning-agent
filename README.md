@@ -1,446 +1,183 @@
-# Autonomous Iterative Learning Agent
+# Minesweeper Learning Lab
 
-An autonomous AI agent system that solves arbitrary tasks through iterative experimentation, observation, and accumulated learning. The agent follows an **Observe → Hypothesize → Act → Evaluate → Learn → Repeat** cycle with persistent vector-based memory.
+Does persistent learning make an agent better at a game? This project answers that with a controlled,
+side-by-side experiment on **Minesweeper**, run entirely in code: **no LLM, no API key, no rate limits**.
 
-## Architecture
+Two agents play the **same sequence of seeded boards** at the same time. Both reason from the numbers
+on the board and both try to win every game:
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                    React Frontend                        │
-│  Dashboard │ Live View │ Rules │ Memory │ Settings       │
-└───────────────────────┬─────────────────────────────────┘
-                        │ REST API + WebSocket
-┌───────────────────────┴─────────────────────────────────┐
-│                   FastAPI Backend                         │
-│  Auth │ Tasks │ Memory │ Settings │ WebSocket             │
-└───────────────────────┬─────────────────────────────────┘
-                        │ Redis Queue
-┌───────────────────────┴─────────────────────────────────┐
-│                   Worker Process                          │
-│  ┌─────────────────────────────────────────────────┐     │
-│  │              Agent Orchestrator                  │     │
-│  │  Task Analyzer → Experiment Planner → Action     │     │
-│  │  → Evaluator → Learning Extractor → Strategy     │     │
-│  │  → Rule Discovery → Synthesis                    │     │
-│  └─────────────────────────────────────────────────┘     │
-└─────────┬──────────┬──────────┬──────────┬──────────────┘
-          │          │          │          │
-     PostgreSQL    Redis     Qdrant     Ollama
-     (state)      (queue)   (vectors)  (LLM)
-```
+| Agent | What it uses when it moves |
+|---|---|
+| **With persistent learning** | Reasoning from the visible numbers, **plus its memory**: statistics learned from every past game (its own *and* the other agent's), saved in the database. It uses them whenever reasoning alone can't decide. |
+| **Without learning** | Reasoning from the visible numbers only. It figures every game out on its own and never reads any memory. Its experience and mistakes are still recorded, for the learning agent's benefit. |
 
-## Key Principle
+An **expert solver** built from hand-written Minesweeper logic plays the same boards as a reference line
+on the charts (it is not one of the compared agents).
+
+Over hundreds or thousands of games the UI shows both boards live, rolling win rates, moves needed to win
+against each board's true minimum, what the memory has learned, and every mistake.
+
+## How it works
 
 ```
-LEARNING = ALWAYS ON
-MEMORY RETRIEVAL = USER CONTROLLED
+Experiment (N seeded boards)
+ ├── Learning agent ──┐                    ┌── reasoning + reads the shared memory
+ │                    ├── same boards, interleaved move by move
+ ├── No-learning agent┘                    └── reasoning only; writes to a buffer it never reads
+ └── Expert rules (reference only)
+
+Each move:      deduce certain safe cells / mines from the numbers ─► if a cell is certainly safe, reveal it
+                otherwise guess the lowest-risk cell (board estimate; the learning agent refines it with memory)
+After a move:   learning agent records that cell's outcome at once (a mine hit is learned immediately)
+After a board:  both agents' observations (incl. the no-learning agent's mistakes) are added to the memory,
+                which is saved to the database. The no-learning agent's are added only now, so the learning
+                agent never learns from a board it is still playing.
 ```
 
-These are **independent mechanisms**. The "Use Persistent Learnings" toggle controls ONLY whether previously stored knowledge is retrieved. Learning generation and storage continues unconditionally.
+### The game (`backend/app/game/`): rules are hard-coded
 
-## Prerequisites
+* `minesweeper.py` is a deterministic engine and the only place the rules live. Mines come from a seed,
+  so both agents get identical boards. A seeded 3×3 opening is revealed before move 1.
+* Agents can only ask to reveal a hidden cell. The engine decides everything else: flood-fill of empty
+  regions, mine hits, wins, invalid moves and the move budget.
+* **Minimum moves (3BV).** Every board knows the fewest reveals that can clear it. "Efficiency" is
+  minimum ÷ moves used, for won games.
 
-- **Ollama** (for local LLM inference)
-- **Python 3.12+**
-- **Node.js 20+**
-- *Docker is completely optional (the project now supports 100% zero-Docker local mode)*
+### How the agents solve and learn (`backend/app/game/solver.py`, `backend/app/agents/code_players.py`, `backend/app/learning/`)
 
-## Quick Start (No Docker Required)
+**Reasoning (both agents, fresh every game).** From the visible numbers each agent applies the basic counting
+rules: a number whose mines are all found makes its other neighbours safe, and a number whose hidden
+neighbours exactly match its remaining mines makes them all mines. Certainly-safe cells are revealed first.
 
-Double-click `start.bat` in the project root, OR run:
+**When the basic rules run out (where the agents differ).** The no-learning agent guesses the cell that looks
+least risky on this board alone ("this 1 touches 3 hidden cells, so ~33%"). The learning agent first
+consults the **rules it has discovered**: situations where two numbers' hidden cells overlap (e.g. "a number
+needing 1 mine among 2 cells inside a number needing 1 among 3: the extra cell") that, over at least 30
+sightings, never once went the other way (60 for mines). Cells such a rule marks safe are revealed; cells it
+marks as mines are fed back into the basic rules, which often proves further cells safe. Only if none of
+that applies does it guess, using its memory's odds for situations like this one instead of the board
+estimate alone. Among cells it believes are safe it prefers the one most likely to open an empty region,
+so it also finishes in fewer moves.
 
-### Terminal 1 (Backend API)
+None of these rules are written in the code. The agent finds them in its own and the other agent's
+outcomes, and they turn out to be real Minesweeper techniques (the "1-1" and "1-2" patterns), including ones
+the hand-written expert below does not know.
+
+**Memory.** For every undecided hidden cell the memory records the situation it was in and how it turned
+out (mine, empty region or number):
+* an **overlap situation** for each pair of numbers whose undecided cells overlap: what each still needs,
+  among how many cells, how many they share, and which of them touch the cell (`backend/app/learning/overlaps.py`);
+* a 3×3 and a 5×5 picture of the visible board around the cell (recognised in any rotation or reflection);
+* a *number signature*: for each touching number, how many mines it still needs among how many cells.
+
+Only situations the basic rules cannot settle are recorded, so every discovered rule is knowledge the
+no-learning agent does not have.
+
+**Shared experience.** Both agents' observations go into the same memory, but only the learning agent ever
+reads it. The no-learning agent's are buffered and added after each board.
+
+**Memory scope**, chosen per experiment: **persistent** (one memory shared by all your experiments; it keeps
+growing) or **fresh** (private to this experiment, to show learning from zero).
+
+**What to expect** (fresh memory, identical seeded boards):
+
+| Board | Games | With learning | Without learning | Expert reference |
+|---|---|---|---|---|
+| 9×9, 10 mines | 1–50 | 90% wins, 2.8 extra moves/win | 82%, 3.7 | 96% |
+| 9×9, 10 mines | 401–700 | **96%**, 2.2 | 87%, 3.3 | 97% |
+| 16×16, 40 mines | 1–25 | 68%, 9.8 | 60%, 14.2 | 84% |
+| 16×16, 40 mines | 201–300 | **90%**, 9.3 | 58%, 14.8 | 79% |
+
+The learning agent pulls ahead within the first few dozen games and stays there. On 16×16 it even beats the
+expert, because some rules it discovered go beyond the expert's. With persistent memory, later experiments
+start from everything learned before. "Extra moves" are moves beyond the board's minimum.
+
+### Speed
+
+* **Watch:** paced (`WATCH_MOVE_DELAY_MS`, default 350 ms per move round) so you can follow both boards.
+* **Fast:** as fast as the CPU allows, typically several board pairs per second; the boards refresh a few
+  times a second. You can switch speed while an experiment runs.
+
+## Running locally
+
+Requirements: Python 3.12+ and Node 20+. Nothing else.
+
 ```bash
+# Backend
 cd backend
-.\venv\Scripts\activate
-uvicorn app.main:app --port 8000 --reload
-```
-
-### Terminal 2 (Frontend UI)
-```bash
-cd frontend
-npm run dev
-```
-
-Open your browser at **http://localhost:5173**!
-
----
-
-## Alternative: Quick Start with Docker
-
-### 1. Clone and configure
-
-```bash
-git clone <repository-url>
-cd autonomous-learning-agent
-cp .env.example .env
-# Edit .env if needed (defaults work for local development)
-```
-
-### 2. Install and start Ollama
-
-```bash
-# Download from https://ollama.com
-# Then pull a model:
-ollama pull phi3:mini          # Recommended for 8GB RAM / 4GB VRAM
-# OR
-ollama pull llama3.2:3b        # Alternative small model
-```
-
-### 3. Start all services
-
-```bash
-docker-compose up -d
-```
-
-This starts:
-- **Frontend**: http://localhost:5173
-- **Backend API**: http://localhost:8000
-- **PostgreSQL**: localhost:5432
-- **Redis**: localhost:6379
-- **Qdrant**: http://localhost:6333 (dashboard at /dashboard)
-
-### 4. Create an account and start experimenting
-
-Open http://localhost:5173, register an account, and create your first task.
-
-## Local Development (without Docker)
-
-### Backend
-
-```bash
-cd backend
-
-# Create virtual environment
 python -m venv venv
-venv\Scripts\activate  # Windows
-# source venv/bin/activate  # Linux/Mac
-
-# Install dependencies
+venv\Scripts\activate            # Windows  (source venv/bin/activate on Linux/Mac)
 pip install -r requirements.txt
+copy .env.example .env
+uvicorn app.main:app --port 8000 --reload
 
-# Start PostgreSQL, Redis, Qdrant (via Docker or local installs)
-docker-compose up -d postgres redis qdrant
-
-# Run the API server
-uvicorn app.main:app --reload --port 8000
-
-# In another terminal, run the worker
-python -m app.workers.task_worker
-```
-
-### Frontend
-
-```bash
+# Frontend (second terminal)
 cd frontend
 npm install
-npm run dev
+npm run dev                      # http://localhost:5173
 ```
 
-## Ollama Setup
+On Windows, `start.bat` launches both. Register an account, choose a board, the number of games, the
+speed and the memory scope, and press **Start both agents**. The **Memory** page shows (and can reset)
+the persistent memory.
 
-Ollama is the default LLM provider. It runs locally and supports many open models.
-
-### Installation
-
-- **Windows**: Download from https://ollama.com/download
-- **Linux**: `curl -fsSL https://ollama.com/install.sh | sh`
-- **Mac**: `brew install ollama`
-
-### Model Recommendations
-
-| RAM | VRAM | Recommended Model | Command |
-|-----|------|-------------------|---------|
-| 8 GB | 4 GB | phi3:mini | `ollama pull phi3:mini` |
-| 16 GB | 8 GB | llama3.1:8b | `ollama pull llama3.1:8b` |
-| 32 GB+ | 16 GB+ | llama3.1:70b | `ollama pull llama3.1:70b` |
-
-### Verify Ollama is running
+## Docker
 
 ```bash
-curl http://localhost:11434/api/tags
+cp .env.example .env
+docker compose up -d    # Postgres + backend (:8000) + frontend (:5173)
 ```
-
-## PostgreSQL Setup
-
-PostgreSQL stores all structured application state: tasks, iterations, rules, learnings, snapshots, strategies.
-
-With Docker (recommended):
-```bash
-docker-compose up -d postgres
-```
-
-The database is auto-created with the credentials in `.env`.
-
-## Qdrant Setup
-
-Qdrant stores vector embeddings for synthesized learnings, enabling semantic memory retrieval.
-
-```bash
-docker-compose up -d qdrant
-```
-
-Dashboard: http://localhost:6333/dashboard
-
-## Environment Variables
-
-See `.env.example` for all configuration options. Key variables:
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `OLLAMA_BASE_URL` | Ollama API URL | `http://localhost:11434` |
-| `PRIMARY_MODEL` | Main reasoning model | `phi3:mini` |
-| `DEFAULT_MAX_ITERATIONS` | Default iteration limit | `100` |
-| `DEFAULT_USE_PERSISTENT_LEARNING` | Default retrieval setting | `false` |
-| `EMBEDDING_MODEL` | Sentence transformer model | `all-MiniLM-L6-v2` |
-
-## Creating a Task
-
-1. Open the Dashboard
-2. Enter a task description (can be anything - optimization, research, code, puzzle, etc.)
-3. Configure:
-   - **Max Iterations**: How many iterations to run (10 - 5000)
-   - **Snapshot Interval**: How often to save snapshots (e.g., every 50 iterations)
-   - **Synthesis Interval**: How often to synthesize learnings (e.g., every 100)
-   - **Persistent Learning Retrieval**: ON/OFF (see below)
-4. Click Start
-
-## Understanding Memory Retrieval
-
-The toggle "Use Persistent Learnings" controls ONLY retrieval:
-
-| Setting | Retrieval | Learning | Storage |
-|---------|-----------|----------|---------|
-| **ON** | ✅ Retrieves previous knowledge | ✅ Always records | ✅ Always stores |
-| **OFF** | ❌ No retrieval | ✅ Always records | ✅ Always stores |
-
-This means:
-- Running 1000 iterations with retrieval OFF still builds the knowledge base
-- Switching to ON later gives access to all accumulated knowledge
-- You can compare runs with and without retrieval to measure memory effectiveness
-
-## Running 100/1000+ Iterations
-
-The system is designed for long-running experiments:
-
-```
-Task → Worker Process → Agent Loop (100-5000 iterations)
-   ↓ every iteration: raw learning logged
-   ↓ every N iterations: snapshot created
-   ↓ every M iterations: synthesis + vector DB update
-   ↓ on completion: final synthesis
-```
-
-- **Real-time monitoring**: Watch via WebSocket in the Live View
-- **Checkpoints**: State saved every 10 iterations for crash recovery
-- **Pause/Resume**: Control execution via the UI
-- **Snapshots**: Compare agent knowledge at different points
-
-## Viewing Snapshots
-
-Snapshots capture the agent's state at configured intervals:
-- Known rules and their confidence levels
-- Important discoveries
-- Successful and failed strategies
-- Remaining unknowns
-- Current strategy
-
-Use the Snapshot Comparison tool to see how the agent evolved between iterations.
-
-## Adding Custom Environments
-
-Create a new file in `backend/app/environments/`:
-
-```python
-from app.environments.base import Environment, EnvironmentState, ActionResult
-
-class MyEnvironment(Environment):
-    name = "my_environment"
-    description = "Description of my environment"
-    
-    async def observe(self) -> EnvironmentState:
-        # Return current state
-        ...
-    
-    async def act(self, action: dict) -> ActionResult:
-        # Execute action, return result
-        ...
-    
-    async def reset(self) -> EnvironmentState:
-        # Reset to initial state
-        ...
-    
-    async def is_finished(self) -> bool:
-        # Check if task is complete
-        ...
-    
-    def get_available_actions(self) -> list[dict]:
-        # List available actions
-        ...
-```
-
-Register it in the environment registry.
-
-## Adding Custom Tools
-
-```python
-from app.tools.registry import BaseTool, ToolResult, PermissionLevel, SafetyLevel
-
-class MyTool(BaseTool):
-    name = "my_tool"
-    description = "What my tool does"
-    safety_level = SafetyLevel.MEDIUM
-    permission_level = PermissionLevel.LIMITED
-    
-    async def execute(self, parameters: dict) -> ToolResult:
-        # Execute tool logic
-        ...
-```
-
-## Adding Models
-
-Add any model supported by Ollama:
-
-```bash
-ollama pull <model-name>
-```
-
-Then select it in Settings or when creating a task.
-
-## API Documentation
-
-Interactive API docs available at:
-- **Swagger UI**: http://localhost:8000/docs
-- **ReDoc**: http://localhost:8000/redoc
-
-### Key Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | /api/auth/register | Create account |
-| POST | /api/auth/login | Get JWT token |
-| POST | /api/tasks | Create task |
-| POST | /api/tasks/{id}/start | Start execution |
-| POST | /api/tasks/{id}/pause | Pause execution |
-| GET | /api/tasks/{id}/iterations | List iterations |
-| GET | /api/tasks/{id}/learnings | Get learnings |
-| GET | /api/tasks/{id}/rules | Get discovered rules |
-| GET | /api/tasks/{id}/snapshots | List snapshots |
-| POST | /api/memory/search | Semantic memory search |
-| WS | /ws/tasks/{id} | Real-time updates |
-
-## Testing
-
-```bash
-cd backend
-pip install pytest pytest-asyncio
-pytest tests/ -v
-```
-
-The test suite verifies 8 critical invariants:
-1. Retrieval OFF → no vector queries
-2. Retrieval OFF → raw learning still written
-3. Retrieval OFF → synthesis still inserts to Qdrant
-4. Retrieval ON → relevant memories retrieved
-5. 1000 iterations → learning persisted throughout
-6. Crash/restart → resume from checkpoint
-7. Contradiction → not silently merged
-8. Duplicate → deduplicated
-
-## Troubleshooting
-
-### Ollama connection refused
-```bash
-# Check Ollama is running
-ollama list
-# Start Ollama service
-ollama serve
-```
-
-### PostgreSQL connection error
-```bash
-# Check PostgreSQL is running
-docker-compose ps postgres
-# Check logs
-docker-compose logs postgres
-```
-
-### Qdrant not responding
-```bash
-# Check Qdrant health
-curl http://localhost:6333/healthz
-# Restart Qdrant
-docker-compose restart qdrant
-```
-
-### Worker not processing tasks
-```bash
-# Check worker logs
-docker-compose logs worker
-# Restart worker
-docker-compose restart worker
-```
-
-### Out of memory with large models
-Use a smaller model:
-```bash
-ollama pull phi3:mini  # ~2GB
-```
-Or adjust `PRIMARY_MODEL` in `.env`.
 
 ## Deploy on Render
 
-The repo ships a `render.yaml` Blueprint that provisions three resources:
-`ala-postgres` (database), `ala-backend` (Docker web service) and
-`ala-frontend` (static site).
+`render.yaml` provisions Postgres, the backend (Docker) and the frontend (static site). Apply it as a
+Blueprint; no API keys are needed.
 
-### 1. Create a Qdrant Cloud cluster (required)
+* Keep **one** backend instance: experiments run inside the API process.
+* Free web services sleep after 15 minutes without HTTP traffic, which interrupts a run. On restart,
+  running experiments are marked `interrupted`; press **Continue** to resume at the next unfinished board.
+  Finished games and saved memory are kept.
 
-Render does not host Qdrant. Create a free cluster at
-[cloud.qdrant.io](https://cloud.qdrant.io), then copy its **Cluster URL** and
-**API key** — you will paste them in step 3.
+## API
 
-### 2. Apply the Blueprint
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/api/auth/register`, `/api/auth/login` | Account and JWT |
+| GET | `/api/options` | Board presets and defaults |
+| POST | `/api/experiments` | Create (and by default start) an experiment |
+| GET | `/api/experiments`, `/api/experiments/{id}` | Summaries per agent (incl. expert), current boards |
+| POST | `/api/experiments/{id}/pause` · `/resume` · `/stop` | Control |
+| POST | `/api/experiments/{id}/speed` | `{"speed": "watch" \| "fast"}`, also while running |
+| DELETE | `/api/experiments/{id}` | Delete games and moves (and a fresh memory) |
+| GET | `/api/experiments/{id}/games` | Finished games with metrics and mistakes |
+| GET | `/api/experiments/{id}/games/{game_id}/moves` | Full replay with the agent's reasoning |
+| GET | `/api/experiments/{id}/memory` | What the memory used by this experiment has learned |
+| GET · POST | `/api/memory` · `/api/memory/reset` | The persistent memory; forget it |
+| WS | `/ws/experiments/{id}?token=<JWT>` | Live events: `game_started`, `move`, `game_finished`, `memory_updated`, `experiment_status` |
 
-1. Push this repo to GitHub (already done if you cloned it from there).
-2. In the [Render Dashboard](https://dashboard.render.com) choose **New +** →
-   **Blueprint**, select this repository, and click **Apply**.
-3. Render prompts for the variables marked `sync: false`:
-   - `GROQ_API_KEY` — your Groq API key (or set a different provider below)
-   - `QDRANT_URL` — your Qdrant Cloud cluster URL
-   - `QDRANT_API_KEY` — your Qdrant Cloud API key
+Interactive docs: `http://localhost:8000/docs`.
 
-Wait for both services to deploy (the backend image installs PyTorch and
-pre-downloads the embedding model, so the first build takes several minutes).
+## Tests
 
-### 3. Open the app
+```bash
+cd backend
+pytest
+```
 
-- Frontend: `https://ala-frontend.onrender.com`
-- API docs: `https://ala-backend.onrender.com/docs`
-- Health: `https://ala-backend.onrender.com/api/health`
+The tests cover the engine (seed determinism, safe opening, win/loss, 3BV is reachable, invalid-move
+codes), the action interface, the expert solver, the agents (the no-learning agent wins games on its own
+and plays identically whatever the memory holds; immediate learning from a mine hit; learning finishes won
+games in fewer moves and wins more often), learned rules (canonical overlap keys, a never-contradicted
+situation becoming a rule, one counter-example revoking it, trivial situations excluded), shared experience (the no-learning agent's observations reach the memory), full
+experiment runs (identical boards, persistent vs fresh memory, resume, stop) and the database migration.
 
-Register an account and create a task. The frontend receives the backend URL at
-build time via `VITE_API_BASE_URL`; locally the Vite dev proxy is used instead.
+## Optional: the LLM agents (disabled)
 
-### Render notes and limits
-
-- **Embeddings run on Hugging Face Inference** (`EMBEDDING_PROVIDER=hf` in
-  `render.yaml`), so the free 512 MB plan is enough. Create a free token at
-  [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens)
-  (needs Inference Providers access) and paste it as `HF_TOKEN` when applying
-  the Blueprint. Switch back to `EMBEDDING_PROVIDER=local` only on a 2 GB+
-  plan with torch installed.
-- **Free Postgres** instances expire after 90 days unless upgraded.
-- **Free web services spin down** after idle time, which kills any in-process
-  agent run; paid instances stay up. Keep a single instance — the job manager
-  runs tasks in-process unless you configure `REDIS_URL`.
-- **Ephemeral disk:** `backend/storage` (raw learning logs, snapshots) resets on
-  each deploy. Durable state lives in Postgres and Qdrant.
-- **Real-time updates:** the WebSocket connects directly to the backend host, so
-  the frontend does not need a proxy.
-- Prefer another LLM provider? Set `LLM_PROVIDER` (`ollama` | `openai` |
-  `gemini` | `openrouter`) and the matching key in the backend service's
-  environment, then update the model variables.
+The project also contains LLM-driven agents (a playbook of text lessons, per-move LLM calls and post-game
+reflection). They are kept but switched off. To use them again set `ENABLE_LLM_AGENTS=true` and the LLM
+variables in `backend/.env`; the new-experiment form then offers an **Agents** choice and a model picker.
+See `backend/.env.example` for the LLM settings. Free API tiers allow only a few hundred calls a day, which
+is why the code-only agents are the default.
 
 ## License
 

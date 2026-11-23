@@ -1,79 +1,50 @@
-import { AgentEvent } from '../types';
-import { websocketUrl } from './backendUrl';
+import type { ExperimentEvent } from '../types';
+import { experimentSocketUrl } from './backendUrl';
 
-type EventCallback = (event: AgentEvent) => void;
+type Listener = (event: ExperimentEvent) => void;
+type StatusListener = (connected: boolean) => void;
 
-class WebSocketClient {
+/** One live connection to an experiment's event stream, with automatic reconnect. */
+export class ExperimentSocket {
   private ws: WebSocket | null = null;
-  private callbacks: EventCallback[] = [];
-  private reconnectTimer: number | null = null;
-  private currentTaskId: string | null = null;
-  private currentToken: string | null = null;
+  private timer: number | null = null;
+  private closed = false;
 
-  connect(taskId: string, token: string) {
-    this.currentTaskId = taskId;
-    this.currentToken = token;
-    this.disconnect();
+  constructor(
+    private experimentId: string,
+    private onEvent: Listener,
+    private onStatus: StatusListener = () => {},
+  ) {}
 
-    // Same-origin locally (Vite proxies /ws); hosted builds use VITE_API_BASE_URL.
-    const wsUrl = websocketUrl(taskId, token);
-
-    this.ws = new WebSocket(wsUrl);
-
-    this.ws.onopen = () => {
-      console.log('WebSocket connected');
-      if (this.reconnectTimer) {
-        window.clearTimeout(this.reconnectTimer);
-        this.reconnectTimer = null;
-      }
-    };
-
-    this.ws.onmessage = (event) => {
+  open() {
+    this.closed = false;
+    const token = localStorage.getItem('token') || '';
+    const ws = new WebSocket(experimentSocketUrl(this.experimentId, token));
+    this.ws = ws;
+    ws.onopen = () => this.onStatus(true);
+    ws.onmessage = (msg) => {
       try {
-        const data: AgentEvent = JSON.parse(event.data);
-        this.callbacks.forEach(cb => cb(data));
-      } catch (err) {
-        console.error('Failed to parse WebSocket message', err);
+        const event = JSON.parse(msg.data) as ExperimentEvent;
+        if (event.type !== 'heartbeat') this.onEvent(event);
+      } catch {
+        /* ignore malformed frames */
       }
     };
-
-    this.ws.onclose = () => {
-      console.log('WebSocket disconnected');
-      this.scheduleReconnect();
-    };
-
-    this.ws.onerror = (err) => {
-      console.error('WebSocket error', err);
+    ws.onclose = (e) => {
+      this.onStatus(false);
+      // 4401 = bad token, 4404 = not your experiment: retrying cannot help.
+      if (this.closed || e.code === 4401 || e.code === 4404) return;
+      this.timer = window.setTimeout(() => this.open(), 3000);
     };
   }
 
-  onEvent(callback: EventCallback) {
-    this.callbacks.push(callback);
-    return () => {
-      this.callbacks = this.callbacks.filter(cb => cb !== callback);
-    };
-  }
-
-  disconnect() {
+  close() {
+    this.closed = true;
+    if (this.timer) window.clearTimeout(this.timer);
     if (this.ws) {
-      this.ws.onclose = null; // Prevent auto-reconnect
+      this.ws.onclose = null;
       this.ws.close();
-      this.ws = null;
     }
-    if (this.reconnectTimer) {
-      window.clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = null;
-    }
-  }
-
-  private scheduleReconnect() {
-    if (this.currentTaskId && this.currentToken && !this.reconnectTimer) {
-      this.reconnectTimer = window.setTimeout(() => {
-        console.log('Attempting to reconnect...');
-        this.connect(this.currentTaskId!, this.currentToken!);
-      }, 3000);
-    }
+    this.ws = null;
   }
 }
-
-export const wsClient = new WebSocketClient();

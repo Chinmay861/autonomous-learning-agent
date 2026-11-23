@@ -7,13 +7,12 @@ const Layout = () => {
   const location = useLocation();
 
   const navItems = [
-    { name: 'Dashboard', path: '/' },
-    { name: 'Memory Explorer', path: '/memory' },
-    { name: 'Settings', path: '/settings' }
+    { name: 'Experiments', path: '/' },
+    { name: 'Memory', path: '/memory' }
   ];
 
   const isActive = (path: string) =>
-    path === '/' ? location.pathname === '/' : location.pathname.startsWith(path);
+    path === '/' ? location.pathname === '/' || location.pathname.startsWith('/experiments') : location.pathname.startsWith(path);
 
   return (
     <div className="flex min-h-screen flex-col lg:flex-row">
@@ -24,7 +23,7 @@ const Layout = () => {
       <aside className="flex shrink-0 flex-col border-b border-slate-700 bg-slate-800 lg:sticky lg:top-0 lg:h-screen lg:w-64 lg:border-b-0 lg:border-r">
         <div className="flex items-center justify-between gap-3 px-4 py-3 lg:border-b lg:border-slate-700 lg:py-5">
           <Link to="/" className="min-w-0 truncate text-lg font-semibold text-emerald-300">
-            Autonomous Agent
+            Minesweeper Lab
           </Link>
           <button type="button" onClick={logout} className="btn-ghost shrink-0 px-2 py-1 text-xs lg:hidden">
             Log out
