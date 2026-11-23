@@ -153,6 +153,10 @@ class CodePlayer:
 
         final_found = constraints(game, known_mines)
         final_risk = visible_risk(game, known_mines, final_found)
+        if not final_risk:
+            # Learned "mines" covered every remaining cell, which cannot be right (the game is not won):
+            # ignore them and judge from what the board itself shows.
+            known_mines, final_found, final_risk = mines, found, risk
         final_overlaps = overlap_keys(final_found)
         scored = []
         for cell, visible in final_risk.items():

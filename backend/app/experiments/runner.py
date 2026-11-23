@@ -50,6 +50,9 @@ def _now() -> datetime:
 
 
 class ExperimentRunner:
+    # LLM runs are never restarted automatically by the manager (that could spend API quota unattended).
+    uses_llm = True
+
     def __init__(self, experiment_id: str, publish: Publisher,
                  session_factory=async_sessionmaker_db,
                  llm_factory: Callable[[str], LLMProvider] = get_llm_provider):

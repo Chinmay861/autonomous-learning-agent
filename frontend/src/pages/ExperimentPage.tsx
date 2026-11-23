@@ -180,6 +180,12 @@ export default function ExperimentPage() {
           }
         }
         break;
+      case 'runner_restarted':
+        pushActivity({
+          kind: 'error', tag: 'auto-restart',
+          text: `The run stopped unexpectedly (${event.reason}). It continues from the next unfinished board in ${event.delay}s (automatic restart ${event.attempt}).`,
+        });
+        break;
       case 'agent_error':
         pushActivity({ kind: 'error', game: event.game_index, tag: `${AGENT_META[event.agent].short}: error`, text: event.error });
         break;
@@ -203,6 +209,23 @@ export default function ExperimentPage() {
     wasConnected.current = connected;
   }, [connected, load]);
 
+  // Cross-check with the server every 30 s while a run is active: if the server is further along than
+  // this page (or its status changed), reload. The page can never stay frozen on stale data.
+  const localPlayed = useRef(0);
+  useEffect(() => {
+    if (!experiment?.is_active) return;
+    const timer = window.setInterval(async () => {
+      try {
+        const fresh = await api.getExperiment(experimentId);
+        const served = fresh.summary?.memory?.games_played ?? 0;
+        if (fresh.status !== experiment.status || served > localPlayed.current + 2) load();
+      } catch {
+        /* next tick retries */
+      }
+    }, 30000);
+    return () => window.clearInterval(timer);
+  }, [experiment?.is_active, experiment?.status, experimentId, load]);
+
   // Backup refresh if the live connection drops while a run is active.
   useEffect(() => {
     if (connected || !experiment?.is_active) return;
@@ -218,6 +241,7 @@ export default function ExperimentPage() {
   const summaries = useMemo(() => ({
     memory: summarize(split.memory), baseline: summarize(split.baseline), expert: summarize(split.expert),
   }), [split]);
+  localPlayed.current = summaries.memory.games_played;
   const length = experiment?.num_games ?? 0;
   const played = Math.max(summaries.memory.games_played, summaries.baseline.games_played);
   const smoothing = Math.max(5, Math.min(50, Math.round(played / 10) || 5));

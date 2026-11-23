@@ -17,7 +17,8 @@ const CHANGE_BADGE: Record<string, string> = {
 export interface ActivityItem {
   id: string;
   kind: 'lesson' | 'mistake' | 'analysis' | 'error';
-  game: number;
+  /** Zero-based game index, when the item belongs to a game. */
+  game?: number;
   text: string;
   tag?: string;
 }
@@ -73,7 +74,7 @@ export function PlaybookPanel({ lessons, recentChanges, activity, scope }: Playb
             {activity.map((item) => (
               <li key={item.id} className="text-xs">
                 <div className="mb-0.5 flex items-center gap-2">
-                  <span className="num text-slate-400">Game {item.game + 1}</span>
+                  {item.game !== undefined && <span className="num text-slate-400">Game {item.game + 1}</span>}
                   {item.tag && (
                     <span className={
                       item.kind === 'mistake' ? 'badge-rose'

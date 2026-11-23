@@ -56,6 +56,14 @@ class Settings(BaseSettings):
     # service to sleep mid-run. Empty = use RENDER_EXTERNAL_URL (set by Render automatically); unset locally.
     KEEP_ALIVE_URL: str = ""
     KEEP_ALIVE_SECONDS: int = 300
+    # A running (not paused) experiment that publishes nothing for this long is treated as stuck:
+    # the reason is logged and the run is restarted at its next unfinished board.
+    STALL_TIMEOUT_SECONDS: int = 180
+    STALL_CHECK_SECONDS: int = 30
+    # Automatic restarts after an unexpected stop, before the experiment is marked failed. The count
+    # resets every time a board finishes, so only repeated failures without progress give up.
+    MAX_AUTO_RESTARTS: int = 3
+    RESTART_DELAY_SECONDS: float = 5.0  # first pause; it triples with each further attempt
 
     # --- Experiment defaults and limits
     DEFAULT_NUM_GAMES: int = 500

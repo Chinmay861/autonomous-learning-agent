@@ -141,6 +141,12 @@ Blueprint; no API keys are needed.
   automatically** at the next unfinished board (`AUTO_RESUME_INTERRUPTED=true`). The board that was cut
   short is replayed from scratch, and nothing learned from its unfinished moves is kept. Paused experiments
   stay paused; LLM experiments are never resumed automatically.
+* **Self-healing runs.** If a run hits an error (for example a database connection drop) it continues at
+  the next unfinished board after a short pause (5 s, then 15 s, then 45 s; `MAX_AUTO_RESTARTS`). Only
+  repeated failures without finishing a board mark it `failed`, with the reason. A run that publishes
+  nothing for `STALL_TIMEOUT_SECONDS` (default 180) while not paused is restarted the same way, and the
+  log records exactly where it was stuck. Database queries time out after 60 s instead of waiting forever.
+* The backend logs `board N/M done` every 50 boards, so the Render log shows how far a run got.
 
 ## API
 

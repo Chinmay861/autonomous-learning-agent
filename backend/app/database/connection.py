@@ -7,13 +7,20 @@ from app.config import settings
 
 _is_sqlite = settings.DATABASE_URL.startswith("sqlite")
 
-engine = create_async_engine(
-    settings.DATABASE_URL,
-    echo=False,
+if _is_sqlite:
     # Two agents write concurrently; give SQLite time to wait for the write lock.
-    connect_args={"timeout": 30} if _is_sqlite else {},
-    pool_pre_ping=not _is_sqlite,
-)
+    engine = create_async_engine(settings.DATABASE_URL, echo=False, connect_args={"timeout": 30})
+else:
+    engine = create_async_engine(
+        settings.DATABASE_URL,
+        echo=False,
+        pool_pre_ping=True,
+        # Replace connections before a network hop can silently drop them as idle.
+        pool_recycle=300,
+        pool_timeout=30,
+        # asyncpg waits forever by default; a query on a dead connection must fail, not hang the run.
+        connect_args={"timeout": 30, "command_timeout": 60},
+    )
 
 if _is_sqlite:
     @event.listens_for(engine.sync_engine, "connect")

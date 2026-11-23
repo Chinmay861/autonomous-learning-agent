@@ -392,3 +392,122 @@ async def test_keep_alive_pings_while_an_experiment_runs(monkeypatch):
 
     monkeypatch.delenv("RENDER_EXTERNAL_URL")
     assert ExperimentManager.keep_alive_url() is None  # locally: no keep-alive at all
+
+
+# ---------------------------------------------------------------- self-healing runs
+def _fast_recovery(monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "RESTART_DELAY_SECONDS", 0.01)
+    monkeypatch.setattr(settings, "MAX_AUTO_RESTARTS", 2)
+    monkeypatch.setattr(settings, "STALL_CHECK_SECONDS", 0.05)
+    monkeypatch.setattr(settings, "STALL_TIMEOUT_SECONDS", 0.2)
+
+
+async def _wait_for(condition, seconds=5.0):
+    import asyncio
+
+    for _ in range(int(seconds / 0.02)):
+        if await condition():
+            return True
+        await asyncio.sleep(0.02)
+    return False
+
+
+async def test_a_run_that_errors_is_continued_automatically(db, monkeypatch):
+    from app.experiments.manager import ExperimentManager
+
+    _fast_recovery(monkeypatch)
+    runs = []
+
+    class FlakyRunner:  # fails on its first run (e.g. a database blip), then finishes normally
+        def __init__(self, experiment_id, publish, session_factory=None):
+            self.experiment_id, self.publish, self.paused, self.live = experiment_id, publish, False, {}
+
+        async def run(self):
+            runs.append(len(runs))
+            if len(runs) == 1:
+                raise ConnectionError("database connection lost")
+            await self.publish({"type": "game_finished"})
+
+    exp_id = await make(db)
+    manager = ExperimentManager(session_factory=db, runner_factory=FlakyRunner)
+    await manager.start(exp_id)
+
+    async def ran_twice():
+        return len(runs) == 2 and not manager.is_running(exp_id)
+
+    assert await _wait_for(ran_twice)
+    await manager.shutdown()
+
+
+async def test_a_run_that_keeps_failing_is_marked_failed_not_left_running(db, monkeypatch):
+    from app.experiments.manager import ExperimentManager
+
+    _fast_recovery(monkeypatch)
+
+    class BrokenRunner:
+        def __init__(self, experiment_id, publish, session_factory=None):
+            self.paused, self.live = False, {}
+
+        async def run(self):
+            raise RuntimeError("always broken")
+
+    exp_id = await make(db)
+    async with db() as session:
+        (await session.get(Experiment, exp_id)).status = "running"
+        await session.commit()
+    manager = ExperimentManager(session_factory=db, runner_factory=BrokenRunner)
+    await manager.start(exp_id)
+
+    async def failed():
+        async with db() as session:
+            exp = await session.get(Experiment, exp_id)
+            return exp.status == "failed"
+
+    assert await _wait_for(failed)
+    async with db() as session:
+        exp = await session.get(Experiment, exp_id)
+    assert "always broken" in exp.error and "2 automatic restarts" in exp.error
+    await manager.shutdown()
+
+
+async def test_a_stalled_run_is_restarted_and_the_stall_is_logged(db, monkeypatch, caplog):
+    import asyncio
+    import logging
+
+    from app.experiments.manager import ExperimentManager
+
+    _fast_recovery(monkeypatch)
+    runs = []
+
+    class HangingRunner:  # the first run hangs forever (like a query on a dead connection)
+        def __init__(self, experiment_id, publish, session_factory=None):
+            self.publish, self.paused, self.live = publish, False, {}
+
+        async def run(self):
+            runs.append(len(runs))
+            if len(runs) == 1:
+                await asyncio.Event().wait()
+            await self.publish({"type": "game_finished"})
+
+    exp_id = await make(db)
+    manager = ExperimentManager(session_factory=db, runner_factory=HangingRunner)
+    with caplog.at_level(logging.ERROR, logger="app.experiments.manager"):
+        await manager.start(exp_id)
+
+        async def restarted():
+            return len(runs) == 2 and not manager.is_running(exp_id)
+
+        assert await _wait_for(restarted)
+    assert any("made no progress" in r.getMessage() and "HangingRunner" in r.getMessage() for r in caplog.records)
+    await manager.shutdown()
+
+
+def test_observation_total_stays_in_step_with_the_counts():
+    memory = PatternMemory({"1:a": [1, 2, 3], "s:b": [5, 0, 0]})
+    assert memory.observations == 6
+    memory.record("1:a", "mine")
+    memory.record("s:b", "mine")
+    memory.absorb({"1:c": [0, 1, 1], "o:d": [2, 0, 0]})
+    assert memory.observations == 9 == sum(sum(v) for k, v in memory.counts.items() if k.startswith("1:"))

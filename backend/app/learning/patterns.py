@@ -136,13 +136,16 @@ class PatternMemory:
     def __init__(self, counts: dict[str, list[int]] | None = None):
         self.counts: dict[str, list[int]] = counts or {}
         self.pending: dict[str, list[int]] = {}
+        # Running total of observed cells (each is recorded once at the 3x3 level); kept up to date
+        # by record() and absorb(), because re-summing a large memory after every board is slow.
+        self._observations = sum(sum(v) for k, v in self.counts.items() if k.startswith("1:"))
 
     def __len__(self) -> int:
         return len(self.counts)
 
     @property
     def observations(self) -> int:
-        return sum(sum(v) for k, v in self.counts.items() if k.startswith("1:"))
+        return self._observations
 
     def record(self, key: str, outcome: str) -> None:
         """outcome: "mine" | "zero" | "number"."""
@@ -150,6 +153,8 @@ class PatternMemory:
         for store in (self.counts, self.pending):
             row = store.setdefault(key, [0, 0, 0])
             row[index] += 1
+        if key.startswith("1:"):
+            self._observations += 1
 
     def absorb(self, increments: dict[str, list[int]]) -> int:
         """Add another agent's recorded experience (e.g. the no-learning agent's finished board)."""
@@ -160,6 +165,8 @@ class PatternMemory:
                 for i in range(3):
                     row[i] += values[i]
             added += sum(values)
+            if key.startswith("1:"):
+                self._observations += sum(values)
         return added
 
     def take_pending(self) -> dict[str, list[int]]:

@@ -145,6 +145,9 @@ class PatternRunner:
                 completed = await self._play_board(game_index, players, finished)
                 if not completed:
                     break
+                if (game_index + 1) % 50 == 0:
+                    logger.info(f"Experiment {self.experiment_id}: board {game_index + 1}/{exp.num_games} done "
+                                f"(memory: {len(memory)} situations, {len(self.rules)} rules)")
         # Memory is saved at the end of every finished board. Whatever is still unsaved here belongs to a
         # board that was cut short; it is dropped, because that board is replayed from scratch on resume
         # and the learning agent must not get a peek at it.
@@ -152,10 +155,12 @@ class PatternRunner:
             # The server is shutting down (deploy, restart, Render putting the service to sleep). The
             # status stays "running" (or "paused") so the next startup resumes it automatically.
             raise
-        except Exception as exc:  # a bug must not leave the experiment stuck in "running"
-            logger.exception("Pattern experiment crashed")
-            await self._set_status(ExperimentStatus.FAILED, f"{type(exc).__name__}: {exc}")
-            return
+        except Exception:
+            # Hand the error to the manager, which continues the run at the next unfinished board (or
+            # marks it failed after repeated errors). Writing "failed" here could itself fail when the
+            # database is what broke, which used to leave a dead run that still looked "running".
+            logger.exception(f"Experiment {self.experiment_id} hit an error")
+            raise
 
         await self._set_status(ExperimentStatus.STOPPED if self._stopped else ExperimentStatus.COMPLETED)
 

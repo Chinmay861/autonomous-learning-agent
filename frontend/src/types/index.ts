@@ -235,4 +235,5 @@ export type ExperimentEvent =
       rules?: number; new_rules?: DiscoveredRule[] }
   | { type: 'game_aborted'; agent: AgentKind; game_index: number }
   | { type: 'lessons_updated'; agent: AgentKind; game_index: number; changes: LessonChange[]; lessons: Lesson[]; analysis?: string | null }
-  | { type: 'agent_error'; agent: AgentKind; game_index: number; error: string };
+  | { type: 'agent_error'; agent: AgentKind; game_index: number; error: string }
+  | { type: 'runner_restarted'; reason: string; attempt: number; delay: number };

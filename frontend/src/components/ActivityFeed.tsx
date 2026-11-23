@@ -19,7 +19,7 @@ export function ActivityFeed({ items, empty }: { items: ActivityItem[]; empty: s
           {items.map((item) => (
             <li key={item.id} className="text-xs">
               <div className="mb-0.5 flex items-center gap-2">
-                <span className="num text-slate-400">Game {item.game + 1}</span>
+                {item.game !== undefined && <span className="num text-slate-400">Game {item.game + 1}</span>}
                 {item.tag && <span className={TAG_BADGE[item.kind]}>{item.tag}</span>}
               </div>
               <p className="text-slate-300">{item.text}</p>
