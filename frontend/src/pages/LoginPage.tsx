@@ -65,7 +65,7 @@ const LoginPage = () => {
     <main className="flex min-h-screen items-center justify-center bg-slate-900 px-4 py-10">
       <div className="w-full max-w-md rounded-xl border border-slate-700 bg-slate-800 p-6 shadow-xl sm:p-8">
         <div className="mb-6 text-center">
-          <h1 className="mb-2 text-3xl font-bold text-emerald-300">Autonomous Agent</h1>
+          <h1 className="mb-2 text-3xl font-bold text-emerald-300">Minesweeper Learning Lab</h1>
           <p className="text-sm text-slate-400">
             {mode === 'signin' ? 'Sign in to your workspace' : 'Create your account'}
           </p>

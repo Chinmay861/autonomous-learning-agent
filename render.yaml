@@ -1,10 +1,7 @@
-# Render Blueprint - deploys the Autonomous Learning Agent as:
-#   1. Render Postgres      (database)
-#   2. ala-backend          (FastAPI + agent worker, Docker)
+# Render Blueprint - deploys the Minesweeper Learning Lab as:
+#   1. Render Postgres      (database: experiments, games, moves and the persistent playbook)
+#   2. ala-backend          (FastAPI + in-process experiment runner, Docker)
 #   3. ala-frontend         (React static site)
-#
-# Qdrant is not offered by Render. Create a free Qdrant Cloud cluster and paste
-# its URL + API key when Render prompts for the QDRANT_* values below.
 #
 # After the first deploy, open the frontend URL and register an account.
 
@@ -17,15 +14,14 @@ databases:
     region: singapore
 
 services:
-  # --- Backend API + in-process agent worker ---
+  # --- Backend API + in-process experiment runner (keep a single instance) ---
   - type: web
     name: ala-backend
     runtime: docker
     region: singapore
-    # Free tier (512 MB) is enough now that embeddings run on Hugging Face
-    # Inference instead of local PyTorch. Upgrade to 1c-2g if you switch back
-    # to EMBEDDING_PROVIDER=local. Note: free services sleep after 15 min idle,
-    # which ends any in-process agent run; paid plans stay up.
+    # Free tier (512 MB) is enough. Free services sleep after 15 min without HTTP
+    # traffic, which interrupts a running experiment; it can be resumed from the
+    # UI at the next unfinished game. Paid plans stay up for long runs.
     plan: free
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
@@ -38,34 +34,9 @@ services:
           property: connectionString
       - key: SECRET_KEY
         generateValue: true
-      # Leave Redis empty: the job manager runs tasks in-process on one instance.
-      - key: REDIS_URL
-        value: ""
-      # Embeddings run on Hugging Face Inference (free tier) so the 512 MB
-      # free plan has enough RAM. Needs HF_TOKEN below (free HF account).
-      - key: EMBEDDING_PROVIDER
-        value: hf
-      - key: HF_TOKEN
-        sync: false
-      # Managed vector store (Qdrant Cloud). Filled in when the Blueprint is applied.
-      - key: QDRANT_URL
-        sync: false
-      - key: QDRANT_API_KEY
-        sync: false
-      # LLM provider (Groq shown; ollama/gemini/openai/openrouter also supported).
-      - key: LLM_PROVIDER
-        value: groq
-      - key: GROQ_API_KEY
-        sync: false
-      # Groq GPT-OSS models: openai/gpt-oss-120b (best) or openai/gpt-oss-20b (faster)
-      - key: CLOUD_MODEL
-        value: openai/gpt-oss-20b
-      - key: PRIMARY_MODEL
-        value: openai/gpt-oss-20b
-      - key: FAST_MODEL
-        value: openai/gpt-oss-20b
-      - key: SYNTHESIS_MODEL
-        value: openai/gpt-oss-20b
+      # Code-only agents: no LLM or API key needed. (LLM agents are disabled; see README.)
+      - key: ENABLE_LLM_AGENTS
+        value: "false"
 
   # --- Frontend (static site with SPA fallback) ---
   - type: web

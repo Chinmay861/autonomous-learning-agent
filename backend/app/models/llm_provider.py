@@ -1,414 +1,413 @@
-from abc import ABC, abstractmethod
-from typing import Any, AsyncIterator
-import httpx
-import json
+"""LLM providers: Ollama (local) and any OpenAI-compatible API (Groq, OpenAI, Gemini, OpenRouter).
+
+Every call returns an `LLMResponse` with token usage so experiments can report cost.
+
+Model strings may carry a provider prefix: "groq:openai/gpt-oss-20b", "ollama:qwen3:4b".
+Without a known prefix the model is sent to `settings.LLM_PROVIDER`.
+"""
+from __future__ import annotations
+
 import asyncio
+import json
+import logging
+import re
+import ssl
+from functools import lru_cache
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from typing import Any
 
-class QuotaExhaustedError(Exception):
-    """Raised when the provider reports a daily/quota limit.
+import httpx
 
-    Retrying cannot help until the quota resets, so callers should abort
-    cleanly instead of burning the iteration budget on fallbacks.
+logger = logging.getLogger(__name__)
+
+PROVIDERS = ("ollama", "groq", "openai", "gemini", "openrouter", "custom")
+
+_DEFAULT_BASE_URLS = {
+    "groq": "https://api.groq.com/openai/v1",
+    "openai": "https://api.openai.com/v1",
+    "gemini": "https://generativelanguage.googleapis.com/v1beta/openai",
+    "openrouter": "https://openrouter.ai/api/v1",
+    "custom": "http://localhost:8000/v1",
+}
+
+
+class LLMError(RuntimeError):
+    """A call failed after retries."""
+
+
+class LLMAuthError(LLMError):
+    """The provider rejected the credentials (401/403). Retrying cannot help."""
+
+
+class QuotaExhaustedError(LLMError):
+    """The provider reported a daily/quota limit. Retrying cannot help until it resets."""
+
+
+class RateLimitedError(LLMError):
+    """Per-minute rate limit still hit after waiting. Transient: the caller should wait and retry."""
+
+
+@dataclass
+class LLMResponse:
+    text: str
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    finish_reason: str = ""
+
+
+_DURATION_PART = re.compile(r"(\d+(?:\.\d+)?)(ms|h|m|s)")
+
+
+def parse_duration(text: str | None) -> float | None:
+    """Parse rate-limit durations such as "7.66s", "2m59.56s", "120ms", "1h2m3s" into seconds."""
+    if not text:
+        return None
+    total, found = 0.0, False
+    for value, unit in _DURATION_PART.findall(text):
+        found = True
+        total += float(value) * {"ms": 0.001, "s": 1, "m": 60, "h": 3600}[unit]
+    return total if found else None
+
+
+def estimate_tokens(system: str, user: str) -> int:
+    """Rough request size: ~4 characters per prompt token plus a typical short reasoned answer."""
+    return (len(system) + len(user)) // 4 + 600
+
+
+class RateGate:
+    """Paces calls to one provider model from its `x-ratelimit-*` response headers.
+
+    Both agents share the gate for their model, so instead of firing requests that
+    come back 429, a call waits just long enough for the token bucket to refill.
     """
-    pass
+
+    def __init__(self):
+        self.limit: float | None = None       # tokens per minute
+        self.remaining: float | None = None   # tokens left in the current window
+        self.updated_at = 0.0
+        self.reset_after: float | None = None
+
+    def _available(self, now: float) -> float | None:
+        if self.remaining is None:
+            return None
+        if self.limit:  # the bucket refills continuously at limit/60 tokens per second
+            return min(self.limit, self.remaining + (now - self.updated_at) * self.limit / 60.0)
+        if self.reset_after is not None and now - self.updated_at >= self.reset_after:
+            return None
+        return self.remaining
+
+    async def wait_for(self, tokens: int) -> None:
+        loop = asyncio.get_running_loop()
+        for _ in range(30):
+            now = loop.time()
+            available = self._available(now)
+            if available is None or available >= tokens or (self.limit and tokens > self.limit):
+                break
+            if self.limit:
+                wait = (tokens - available) / (self.limit / 60.0)
+            else:
+                wait = max(0.5, (self.reset_after or 1.0) - (now - self.updated_at))
+            await asyncio.sleep(min(max(wait, 0.2), 30.0))
+        # Reserve the tokens so a concurrent caller (the other agent) sees the reduced budget.
+        if self.remaining is not None:
+            now = loop.time()
+            available = self._available(now)
+            if available is not None:
+                self.remaining = available - tokens
+                self.updated_at = now
+
+    def update(self, headers) -> None:
+        remaining = headers.get("x-ratelimit-remaining-tokens")
+        if remaining is None:
+            return
+        try:
+            self.remaining = float(remaining)
+        except ValueError:
+            return
+        try:
+            self.limit = float(headers.get("x-ratelimit-limit-tokens") or 0) or None
+        except ValueError:
+            self.limit = None
+        self.reset_after = parse_duration(headers.get("x-ratelimit-reset-tokens"))
+        self.updated_at = asyncio.get_running_loop().time()
+
+
+_gates: dict[tuple[str, str], RateGate] = {}
+
+
+def rate_gate(base_url: str, model: str) -> RateGate:
+    return _gates.setdefault((base_url, model), RateGate())
+
+
+def default_reasoning_effort(model: str, configured: str = "") -> str:
+    """Reasoning models given no effort level can spend the whole token budget thinking
+    and return an empty answer. Default gpt-oss to "low": one short decision per move."""
+    if configured:
+        return configured
+    return "low" if "gpt-oss" in model.lower() else ""
+
+
+_RETRY_IN = re.compile(r"try again in (?:(\d+)m)?([\d.]+)(ms|s)", re.IGNORECASE)
+
+
+def _rate_limit_wait(response: httpx.Response, fallback: float) -> float:
+    """Seconds to wait after a 429: retry-after header, else the "try again in 6.5s" hint."""
+    header = response.headers.get("retry-after")
+    if header:
+        try:
+            return float(header)
+        except ValueError:
+            pass
+    match = _RETRY_IN.search(response.text or "")
+    if match:
+        minutes = float(match.group(1) or 0)
+        value = float(match.group(2))
+        return minutes * 60 + (value / 1000 if match.group(3).lower() == "ms" else value)
+    return fallback
+
+
+@lru_cache(maxsize=1)
+def tls_verify() -> ssl.SSLContext | bool:
+    """Verify HTTPS against the operating system's certificate store.
+
+    Antivirus and corporate proxies often re-sign HTTPS traffic with a root
+    certificate that only the OS store trusts. `truststore` makes Python use
+    that store, so certificate verification stays ON instead of being disabled.
+    Falls back to certifi's bundle if truststore is unavailable.
+    """
+    try:
+        import truststore
+
+        return truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    except Exception as exc:  # pragma: no cover - depends on the platform
+        logger.warning(f"truststore unavailable ({exc}); using the default certificate bundle")
+        return True
+
+
+def parse_json_object(text: str) -> dict:
+    """Parse a JSON object from model output, tolerating code fences and surrounding prose."""
+    cleaned = (text or "").strip()
+    fence = re.search(r"```(?:json)?\s*([\s\S]*?)```", cleaned)
+    if fence:
+        cleaned = fence.group(1).strip()
+    try:
+        value = json.loads(cleaned)
+        if isinstance(value, dict):
+            return value
+    except ValueError:
+        pass
+    start = cleaned.find("{")
+    end = cleaned.rfind("}")
+    if start != -1 and end > start:
+        try:
+            value = json.loads(cleaned[start:end + 1])
+            if isinstance(value, dict):
+                return value
+        except ValueError:
+            pass
+    raise ValueError(f"No JSON object in model output: {cleaned[:200]!r}")
 
 
 class LLMProvider(ABC):
-    @abstractmethod
-    async def generate(self, prompt: str, system: str = '', temperature: float = 0.7) -> str: ...
-    
-    @abstractmethod
-    async def structured_generate(self, prompt: str, schema: dict, system: str = '', temperature: float = 0.7) -> dict: ...
-    
-    async def generate_json(self, prompt: str, system_prompt: str = '', **kwargs) -> dict | list:
-        raw = await self.generate(prompt, system=system_prompt, response_format="json", **kwargs)
-        text = raw.strip()
-        if text.startswith("```json"):
-            text = text[7:]
-        if text.startswith("```"):
-            text = text[3:]
-        if text.endswith("```"):
-            text = text[:-3]
-        try:
-            return json.loads(text.strip())
-        except Exception:
-            # Try basic recovery
-            return _repair_and_parse_json(text.strip())
-    
-    @abstractmethod
-    async def stream(self, prompt: str, system: str = '', temperature: float = 0.7) -> AsyncIterator[str]: ...
-    
-    @abstractmethod
-    async def list_models(self) -> list[str]: ...
+    model: str
 
+    @abstractmethod
+    async def complete(self, system: str, user: str, temperature: float = 0.3, json_mode: bool = True) -> LLMResponse:
+        ...
 
-def _repair_and_parse_json(text: str) -> dict | list:
-    import re
-    # Try finding enclosed json block
-    m = re.search(r'(\{[\s\S]*\}|\[[\s\S]*\])', text)
-    candidate = m.group(1) if m else text
-    try:
-        return json.loads(candidate)
-    except Exception:
-        pass
-    # Try closing dangling quotes and brackets
-    for closer in ['"}', '"]', '}', ']']:
-        try:
-            return json.loads(candidate + closer)
-        except Exception:
-            pass
-    return {}
+    @abstractmethod
+    async def list_models(self) -> list[str]:
+        ...
+
+    async def complete_json(self, system: str, user: str, temperature: float = 0.3) -> tuple[dict, LLMResponse]:
+        response = await self.complete(system, user, temperature=temperature, json_mode=True)
+        return parse_json_object(response.text), response
 
 
 class OllamaProvider(LLMProvider):
-    def __init__(self, base_url: str = "http://localhost:11434", model: str = "llama3"):
-        self.base_url = base_url
+    def __init__(self, base_url: str, model: str, max_tokens: int = 2048, timeout: float = 90.0):
+        self.base_url = base_url.rstrip("/")
         self.model = model
-    
-    async def _request(self, method: str, endpoint: str, **kwargs) -> Any:
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            try:
-                response = await client.request(method, f"{self.base_url}{endpoint}", **kwargs)
-                response.raise_for_status()
-                return response.json()
-            except httpx.HTTPError as e:
-                # Basic retry
-                await asyncio.sleep(1)
-                response = await client.request(method, f"{self.base_url}{endpoint}", **kwargs)
-                response.raise_for_status()
-                return response.json()
+        self.max_tokens = max_tokens
+        self.timeout = timeout
 
-    async def generate(self, prompt: str, system: str = '', temperature: float = 0.7, **kwargs) -> str:
-        system_text = system or kwargs.get("system_prompt", "")
-        payload = {
+    async def complete(self, system: str, user: str, temperature: float = 0.3, json_mode: bool = True) -> LLMResponse:
+        payload: dict[str, Any] = {
             "model": self.model,
-            "messages": [
-                {"role": "system", "content": system_text},
-                {"role": "user", "content": prompt}
-            ],
+            "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
             "stream": False,
-            "options": {"temperature": temperature, "num_predict": kwargs.get("num_predict", 1024)}
+            "options": {"temperature": temperature, "num_predict": self.max_tokens},
         }
-        if "response_format" in kwargs:
-            rf = kwargs["response_format"]
-            if isinstance(rf, dict) and "schema" in rf:
-                payload["format"] = rf["schema"]
-            else:
-                payload["format"] = "json"
-        elif "schema" in kwargs:
-            payload["format"] = kwargs["schema"]
-            
-        data = await self._request("POST", "/api/chat", json=payload)
-        return data.get("message", {}).get("content", "")
-
-    async def structured_generate(self, prompt: str, schema: dict, system: str = '', temperature: float = 0.7, **kwargs) -> dict:
-        system_text = system or kwargs.get("system_prompt", "")
-        payload = {
-            "model": self.model,
-            "messages": [
-                {"role": "system", "content": system_text},
-                {"role": "user", "content": prompt}
-            ],
-            "format": schema,
-            "stream": False,
-            "options": {"temperature": temperature, "num_predict": kwargs.get("num_predict", 1024)}
-        }
-        data = await self._request("POST", "/api/chat", json=payload)
-        content = data.get("message", {}).get("content", "{}")
-        try:
-            return json.loads(content)
-        except json.JSONDecodeError:
-            import re
-            m = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', content)
-            if m:
+        if json_mode:
+            payload["format"] = "json"
+        last_error: Exception | None = None
+        async with httpx.AsyncClient(timeout=self.timeout, verify=tls_verify()) as client:
+            for attempt in range(3):
                 try:
-                    return json.loads(m.group(1))
-                except Exception:
-                    pass
-            return _repair_and_parse_json(content)
-
-    async def stream(self, prompt: str, system: str = '', temperature: float = 0.7) -> AsyncIterator[str]:
-        payload = {
-            "model": self.model,
-            "messages": [
-                {"role": "system", "content": system},
-                {"role": "user", "content": prompt}
-            ],
-            "stream": True,
-            "options": {"temperature": temperature}
-        }
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            async with client.stream("POST", f"{self.base_url}/api/chat", json=payload) as response:
-                response.raise_for_status()
-                async for line in response.aiter_lines():
-                    if line:
-                        try:
-                            chunk = json.loads(line)
-                            yield chunk.get("message", {}).get("content", "")
-                        except json.JSONDecodeError:
-                            continue
+                    response = await client.post(f"{self.base_url}/api/chat", json=payload)
+                    response.raise_for_status()
+                    data = response.json()
+                    return LLMResponse(
+                        text=data.get("message", {}).get("content", ""),
+                        prompt_tokens=int(data.get("prompt_eval_count") or 0),
+                        completion_tokens=int(data.get("eval_count") or 0),
+                    )
+                except httpx.HTTPError as exc:
+                    last_error = exc
+                    await asyncio.sleep(1.5 * (attempt + 1))
+        raise LLMError(f"Ollama call failed: {last_error}")
 
     async def list_models(self) -> list[str]:
-        data = await self._request("GET", "/api/tags")
-        return [model.get("name") for model in data.get("models", [])]
+        async with httpx.AsyncClient(timeout=5.0, verify=tls_verify()) as client:
+            response = await client.get(f"{self.base_url}/api/tags")
+            response.raise_for_status()
+            return [m.get("name") for m in response.json().get("models", []) if m.get("name")]
 
 
 class OpenAICompatibleProvider(LLMProvider):
-    def __init__(self, base_url: str, api_key: str, model: str):
-        self.base_url = base_url
+    def __init__(self, base_url: str, api_key: str, model: str, max_tokens: int = 2048,
+                 timeout: float = 90.0, reasoning_effort: str = ""):
+        self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.model = model
-        # Set to the provider's message when a daily/quota limit is hit.
-        # The orchestrator checks this flag to abort the run instead of
-        # burning iterations on fallbacks that cannot succeed.
-        self.quota_exhausted: str | None = None
+        self.max_tokens = max_tokens
+        self.timeout = timeout
+        self.reasoning_effort = reasoning_effort
+
+    def _headers(self) -> dict:
+        return {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
 
     @staticmethod
-    def _quota_message(response) -> str | None:
-        """Extract a daily/quota-limit signal from a 429 response, if present."""
+    def _quota_message(response: httpx.Response) -> str | None:
         try:
             body = response.json()
-        except Exception:
+        except ValueError:
             return None
-        message = ((body.get("error") or {}).get("message", "")) if isinstance(body, dict) else ""
-        if any(signal in message for signal in ("per day", "TPD", "tokens per day", "daily limit", "per-day", "quota")):
+        error = body.get("error") if isinstance(body, dict) else None
+        message = (error.get("message", "") if isinstance(error, dict) else str(error or ""))
+        if any(s in message for s in ("per day", "TPD", "RPD", "tokens per day", "daily", "quota")):
             return message[:300]
         return None
-    
-    async def _request(self, method: str, endpoint: str, **kwargs) -> Any:
-        headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
-        # verify=False prevents SSL: CERTIFICATE_VERIFY_FAILED on Windows corporate/antivirus intercepts
-        async with httpx.AsyncClient(timeout=45.0, verify=False) as client:
-            last_err = None
-            for attempt in range(4):
+
+    async def complete(self, system: str, user: str, temperature: float = 0.3, json_mode: bool = True) -> LLMResponse:
+        payload: dict[str, Any] = {
+            "model": self.model,
+            "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
+            "temperature": temperature,
+            "max_tokens": self.max_tokens,
+        }
+        if json_mode:
+            payload["response_format"] = {"type": "json_object"}
+        if self.reasoning_effort:
+            payload["reasoning_effort"] = self.reasoning_effort
+
+        last_error: str = ""
+        attempt = 0
+        rate_limited = 0
+        gate = rate_gate(self.base_url, self.model)
+        estimate = estimate_tokens(system, user)
+        async with httpx.AsyncClient(timeout=self.timeout, verify=tls_verify()) as client:
+            while attempt < 5:
+                attempt += 1
+                await gate.wait_for(estimate)
                 try:
-                    response = await client.request(method, f"{self.base_url}{endpoint}", headers=headers, **kwargs)
-                    if response.status_code == 429:
-                        quota_message = self._quota_message(response)
-                        if quota_message:
-                            self.quota_exhausted = quota_message
-                            raise QuotaExhaustedError(
-                                "LLM daily quota exhausted. No further calls will succeed "
-                                f"until it resets. Provider says: {quota_message}"
-                            )
-                        retry_after = float(response.headers.get("retry-after", 1.5 * (attempt + 1)))
-                        await asyncio.sleep(min(retry_after, 4.0))
-                        if "json" in kwargs and isinstance(kwargs["json"], dict):
-                            curr_m = kwargs["json"].get("model", "")
-                            if "120b" in curr_m:
-                                kwargs["json"]["model"] = "qwen/qwen3.8-27b"
-                            elif "27b" in curr_m and attempt >= 2:
-                                kwargs["json"]["model"] = "groq/compound-mini"
-                        continue
-                    response.raise_for_status()
-                    return response.json()
-                except httpx.HTTPStatusError as e:
-                    last_err = e
-                    if e.response.status_code == 429:
-                        quota_message = self._quota_message(e.response)
-                        if quota_message:
-                            self.quota_exhausted = quota_message
-                            raise QuotaExhaustedError(
-                                "LLM daily quota exhausted. No further calls will succeed "
-                                f"until it resets. Provider says: {quota_message}"
-                            ) from e
-                        await asyncio.sleep(1.5 * (attempt + 1))
-                        continue
-                    # 404/5xx from Groq are frequently transient (model routing
-                    # flaps); retry them a few times before failing.
-                    if e.response.status_code in (404, 500, 502, 503, 529):
-                        await asyncio.sleep(1.5 * (attempt + 1))
-                        continue
-                    raise
-                except httpx.HTTPError as e:
-                    last_err = e
-                    await asyncio.sleep(1.0)
-            if last_err:
-                raise last_err
+                    response = await client.post(f"{self.base_url}/chat/completions",
+                                                 headers=self._headers(), json=payload)
+                except httpx.HTTPError as exc:
+                    last_error = str(exc)
+                    await asyncio.sleep(1.5 * (attempt + 1))
+                    continue
+                gate.update(response.headers)
 
-    async def generate(self, prompt: str, system: str = '', temperature: float = 0.7, **kwargs) -> str:
-        system_text = system or kwargs.get("system_prompt", "")
-        payload = {
-            "model": self.model,
-            "messages": [
-                {"role": "system", "content": system_text},
-                {"role": "user", "content": prompt}
-            ],
-            "temperature": temperature
-        }
-        data = await self._request("POST", "/chat/completions", json=payload)
-        return data["choices"][0]["message"]["content"]
+                if response.status_code in (401, 403):
+                    raise LLMAuthError(f"{response.status_code} from provider: {response.text[:200]}")
+                if response.status_code == 429:
+                    quota = self._quota_message(response)
+                    # Daily limits are rolling windows: when the provider says capacity frees up
+                    # within a few minutes, wait instead of failing, so long runs keep going at
+                    # whatever pace the daily budget allows.
+                    if quota and _rate_limit_wait(response, 1e9) > 600:
+                        raise QuotaExhaustedError(f"Provider quota exhausted: {quota}")
+                    # Per-minute limits are expected on free tiers: wait as instructed and
+                    # retry without spending one of the error attempts.
+                    rate_limited += 1
+                    if rate_limited > 12:
+                        raise RateLimitedError(f"Still rate limited after {rate_limited - 1} waits: "
+                                               f"{response.text[:200]}")
+                    wait = _rate_limit_wait(response, 2.0 * rate_limited)
+                    attempt -= 1
+                    await asyncio.sleep(min(max(wait, 0.5) + 0.25, 60.0))
+                    continue
+                if response.status_code == 400 and json_mode and "response_format" in payload:
+                    # Some models reject JSON mode or fail to produce valid JSON under it
+                    # ("json_validate_failed"). Retry once without it; the prompt still asks for JSON.
+                    payload.pop("response_format", None)
+                    last_error = f"400: {response.text[:200]}"
+                    continue
+                if response.status_code >= 500 or response.status_code == 404:
+                    last_error = f"{response.status_code}: {response.text[:200]}"
+                    await asyncio.sleep(1.5 * (attempt + 1))
+                    continue
+                if response.status_code >= 400:
+                    raise LLMError(f"{response.status_code} from provider: {response.text[:300]}")
 
-    async def generate_json(self, prompt: str, system_prompt: str = '', **kwargs) -> dict | list:
-        sys_text = system_prompt or kwargs.get("system", "You must respond with valid JSON.")
-        payload = {
-            "model": self.model,
-            "messages": [
-                {"role": "system", "content": sys_text},
-                {"role": "user", "content": prompt}
-            ],
-            "response_format": {"type": "json_object"}
-        }
-        try:
-            data = await self._request("POST", "/chat/completions", json=payload)
-            content = data["choices"][0]["message"]["content"]
-            return json.loads(content)
-        except Exception:
-            # Fallback to plain generate
-            raw = await self.generate(prompt, system=sys_text)
-            return _repair_and_parse_json(raw)
-
-    async def structured_generate(self, prompt: str, schema: dict, system: str = '', temperature: float = 0.7, **kwargs) -> dict:
-        sys_text = system or kwargs.get("system_prompt", "") or "You must output strictly valid JSON conforming to the requested schema."
-        payload = {
-            "model": self.model,
-            "messages": [
-                {"role": "system", "content": sys_text},
-                {"role": "user", "content": prompt}
-            ],
-            "temperature": temperature,
-            "response_format": {"type": "json_object"}
-        }
-        try:
-            data = await self._request("POST", "/chat/completions", json=payload)
-            content = data["choices"][0]["message"]["content"]
-            return json.loads(content)
-        except Exception:
-            raw = await self.generate(prompt, system=sys_text, temperature=temperature)
-            return _repair_and_parse_json(raw)
-
-    async def stream(self, prompt: str, system: str = '', temperature: float = 0.7, **kwargs) -> AsyncIterator[str]:
-        sys_text = system or kwargs.get("system_prompt", "")
-        payload = {
-            "model": self.model,
-            "messages": [
-                {"role": "system", "content": sys_text},
-                {"role": "user", "content": prompt}
-            ],
-            "temperature": temperature,
-            "stream": True
-        }
-        headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
-        async with httpx.AsyncClient(timeout=45.0, verify=False) as client:
-            async with client.stream("POST", f"{self.base_url}/chat/completions", headers=headers, json=payload) as response:
-                response.raise_for_status()
-                async for line in response.aiter_lines():
-                    if line.startswith("data: "):
-                        data_str = line[6:]
-                        if data_str == "[DONE]":
-                            break
-                        try:
-                            chunk = json.loads(data_str)
-                            delta = chunk["choices"][0].get("delta", {})
-                            if "content" in delta:
-                                yield delta["content"]
-                        except json.JSONDecodeError:
-                            continue
+                data = response.json()
+                usage = data.get("usage") or {}
+                choice = (data.get("choices") or [{}])[0]
+                message = choice.get("message") or {}
+                return LLMResponse(
+                    text=message.get("content") or "",
+                    prompt_tokens=int(usage.get("prompt_tokens") or 0),
+                    completion_tokens=int(usage.get("completion_tokens") or 0),
+                    finish_reason=str(choice.get("finish_reason") or ""),
+                )
+        raise LLMError(f"LLM call failed after retries: {last_error}")
 
     async def list_models(self) -> list[str]:
-        try:
-            data = await self._request("GET", "/models")
-            return [model.get("id") for model in data.get("data", [])]
-        except Exception:
-            return [self.model]
+        async with httpx.AsyncClient(timeout=10.0, verify=tls_verify()) as client:
+            response = await client.get(f"{self.base_url}/models", headers=self._headers())
+            if response.status_code in (401, 403):
+                raise LLMAuthError(f"{response.status_code} from provider: {response.text[:200]}")
+            response.raise_for_status()
+            return [m.get("id") for m in response.json().get("data", []) if m.get("id")]
 
 
-def get_llm_provider(config: dict | None = None) -> LLMProvider:
-    import os
+def split_model(model: str | None) -> tuple[str, str]:
+    """Return (provider, model_name) for a possibly-prefixed model string."""
     from app.config import settings
-    
-    cfg = config or {}
-    model = cfg.get("model") or settings.CLOUD_MODEL or settings.PRIMARY_MODEL
-    provider_type = cfg.get("type") or settings.LLM_PROVIDER or "ollama"
-    api_key = cfg.get("api_key") or settings.CLOUD_API_KEY
-    base_url = cfg.get("base_url") or settings.CLOUD_BASE_URL
 
-    # Auto-detect from model string prefix
-    if model:
-        if model.startswith("groq/"):
-            provider_type = "groq"
-            model = model.replace("groq/", "", 1)
-        elif model.startswith("gemini/"):
-            provider_type = "gemini"
-            model = model.replace("gemini/", "", 1)
-        elif model.startswith("openrouter/"):
-            provider_type = "openrouter"
-            model = model.replace("openrouter/", "", 1)
-        elif model.startswith("openai/") and provider_type != "groq":
-            provider_type = "openai"
-            model = model.replace("openai/", "", 1)
+    value = (model or settings.default_model or "").strip()
+    prefix, _, rest = value.partition(":")
+    if prefix.lower() in PROVIDERS and rest:
+        return prefix.lower(), rest
+    # Legacy "groq/<model>" form. "openai/" is NOT treated as a prefix because
+    # Groq's own model ids look like "openai/gpt-oss-20b".
+    prefix, _, rest = value.partition("/")
+    if prefix.lower() in ("groq", "gemini", "openrouter", "ollama") and rest:
+        return prefix.lower(), rest
+    return (settings.LLM_PROVIDER or "ollama").lower(), value
 
-    # Extract keys from settings or os.environ (.env)
-    groq_key = api_key or getattr(settings, "GROQ_API_KEY", "") or os.getenv("GROQ_API_KEY", "")
-    gemini_key = api_key or getattr(settings, "GEMINI_API_KEY", "") or os.getenv("GEMINI_API_KEY", "")
-    openai_key = api_key or getattr(settings, "OPENAI_API_KEY", "") or os.getenv("OPENAI_API_KEY", "")
-    openrouter_key = api_key or getattr(settings, "OPENROUTER_API_KEY", "") or os.getenv("OPENROUTER_API_KEY", "")
 
-    # Auto-detect from environment keys if cloud provider not explicitly chosen
-    if provider_type == "ollama":
-        if groq_key:
-            provider_type = "groq"
-        elif gemini_key:
-            provider_type = "gemini"
-        elif openai_key:
-            provider_type = "openai"
-        elif openrouter_key:
-            provider_type = "openrouter"
+def get_llm_provider(model: str | None = None) -> LLMProvider:
+    from app.config import settings
 
-    provider_type = provider_type.lower().strip()
-    
-    if provider_type == "groq":
-        if not groq_key:
-            import logging
-            logging.getLogger(__name__).warning("GROQ_API_KEY is not set in backend/.env. Falling back to local Ollama (phi3:mini).")
-            return OllamaProvider(base_url=settings.OLLAMA_BASE_URL, model="phi3:mini")
-        default_groq_model = "qwen/qwen3.8-27b"
-        groq_model = model
-        if not groq_model or any(groq_model.startswith(p) for p in ["phi", "qwen3:", "llama3:"]) or groq_model in ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]:
-            groq_model = default_groq_model
-        return OpenAICompatibleProvider(
-            base_url=base_url or "https://api.groq.com/openai/v1",
-            api_key=groq_key,
-            model=groq_model
-        )
-    elif provider_type == "gemini":
-        if not gemini_key:
-            import logging
-            logging.getLogger(__name__).warning("GEMINI_API_KEY is not set in backend/.env. Falling back to local Ollama (phi3:mini).")
-            return OllamaProvider(base_url=settings.OLLAMA_BASE_URL, model="phi3:mini")
-        return OpenAICompatibleProvider(
-            base_url=base_url or "https://generativelanguage.googleapis.com/v1beta/openai",
-            api_key=gemini_key,
-            model=model if model and not model.startswith("qwen") and not model.startswith("phi") else "gemini-2.0-flash"
-        )
-    elif provider_type == "openai":
-        if not openai_key:
-            import logging
-            logging.getLogger(__name__).warning("OPENAI_API_KEY is not set in backend/.env. Falling back to local Ollama (phi3:mini).")
-            return OllamaProvider(base_url=settings.OLLAMA_BASE_URL, model="phi3:mini")
-        return OpenAICompatibleProvider(
-            base_url=base_url or "https://api.openai.com/v1",
-            api_key=openai_key,
-            model=model if model and not model.startswith("qwen") and not model.startswith("phi") else "gpt-4o-mini"
-        )
-    elif provider_type == "openrouter":
-        if not openrouter_key:
-            import logging
-            logging.getLogger(__name__).warning("OPENROUTER_API_KEY is not set in backend/.env. Falling back to local Ollama (phi3:mini).")
-            return OllamaProvider(base_url=settings.OLLAMA_BASE_URL, model="phi3:mini")
-        return OpenAICompatibleProvider(
-            base_url=base_url or "https://openrouter.ai/api/v1",
-            api_key=openrouter_key,
-            model=model if model and not model.startswith("qwen") and not model.startswith("phi") else "meta-llama/llama-3.3-70b-instruct"
-        )
-    elif provider_type == "custom":
-        return OpenAICompatibleProvider(
-            base_url=base_url or "http://localhost:8000/v1",
-            api_key=api_key or "dummy",
-            model=model or "default"
-        )
-    else:
-        return OllamaProvider(
-            base_url=settings.OLLAMA_BASE_URL,
-            model=model or settings.PRIMARY_MODEL
-        )
+    provider, name = split_model(model)
+    common = {"max_tokens": settings.LLM_MAX_TOKENS, "timeout": settings.LLM_TIMEOUT_SECONDS}
+    if provider == "ollama":
+        return OllamaProvider(settings.OLLAMA_BASE_URL, name or settings.PRIMARY_MODEL, **common)
+
+    keys = {
+        "groq": settings.GROQ_API_KEY,
+        "openai": settings.OPENAI_API_KEY,
+        "gemini": settings.GEMINI_API_KEY,
+        "openrouter": settings.OPENROUTER_API_KEY,
+        "custom": "",
+    }
+    api_key = settings.CLOUD_API_KEY or keys.get(provider, "")
+    if not api_key and provider != "custom":
+        raise LLMAuthError(f"No API key configured for provider {provider!r} (set {provider.upper()}_API_KEY).")
+    base_url = settings.CLOUD_BASE_URL or _DEFAULT_BASE_URLS[provider]
+    return OpenAICompatibleProvider(base_url, api_key or "none", name,
+                                    reasoning_effort=default_reasoning_effort(name, settings.LLM_REASONING_EFFORT),
+                                    **common)

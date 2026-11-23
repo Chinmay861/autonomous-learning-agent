@@ -1,44 +1,32 @@
-import { Task, TaskCreate, Iteration, Rule, LearningRecord, Snapshot, MemorySearchResult, MemoryStats, Settings, HardwareInfo } from '../types';
+import type {
+  Experiment, ExperimentCreate, GameRecord, Lesson, MemorySummary, Options, ReplayMove, User,
+} from '../types';
 import { API_BASE } from './backendUrl';
 
 class ApiClient {
-  private getToken(): string | null {
-    return localStorage.getItem('token');
-  }
-
-  private async fetchWithAuth(url: string, options: RequestInit = {}) {
-    const token = this.getToken();
+  private async request<T>(url: string, options: RequestInit = {}): Promise<T> {
+    const token = localStorage.getItem('token');
     const headers = new Headers(options.headers || {});
-    
-    if (token) {
-      headers.set('Authorization', `Bearer ${token}`);
-    }
-    
-    // Auto-add Content-Type for JSON if body exists and it's not FormData
+    if (token) headers.set('Authorization', `Bearer ${token}`);
     if (options.body && typeof options.body === 'string' && !headers.has('Content-Type')) {
       headers.set('Content-Type', 'application/json');
     }
-
     // Abort slow requests (e.g. a cold backend) instead of hanging forever.
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 60000);
-
     try {
-      const response = await fetch(`${API_BASE}${url}`, {
-        ...options,
-        headers,
-        signal: options.signal ?? controller.signal
-      });
-
+      const response = await fetch(`${API_BASE}${url}`, { ...options, headers, signal: controller.signal });
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.detail || 'Unable to load data. Check your connection and try again.');
+        const data = await response.json().catch(() => ({}));
+        const detail = Array.isArray(data.detail)
+          ? data.detail.map((d: { msg?: string }) => d.msg).join('; ')
+          : data.detail;
+        throw new Error(detail || `Request failed (${response.status}).`);
       }
-
       return response.json();
     } catch (err: any) {
       if (err?.name === 'AbortError') {
-        throw new Error('The request timed out. The backend may be waking up — wait a moment and try again.');
+        throw new Error('The request timed out. The backend may be waking up: wait a moment and try again.');
       }
       throw err;
     } finally {
@@ -47,165 +35,84 @@ class ApiClient {
   }
 
   // Auth
-  async login(formData: FormData) {
-    const response = await fetch(`${API_BASE}/auth/login`, {
-      method: 'POST',
-      body: formData
-    });
+  async login(formData: FormData): Promise<{ access_token: string }> {
+    const response = await fetch(`${API_BASE}/auth/login`, { method: 'POST', body: formData });
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.detail || 'Unable to sign in. Check your username and password and try again.');
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.detail || 'Unable to sign in. Check your username and password.');
     }
     return response.json();
   }
 
-  async register(data: any) {
-    const response = await fetch(`${API_BASE}/auth/register`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data)
-    });
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.detail || 'Unable to create the account. Check the details and try again.');
-    }
-    return response.json();
+  register(data: { username: string; email: string; password: string }) {
+    return this.request('/auth/register', { method: 'POST', body: JSON.stringify(data) });
   }
 
-  async getMe() {
-    return this.fetchWithAuth('/auth/me');
+  getMe() {
+    return this.request<User>('/auth/me');
   }
 
-  // Tasks
-  async getTasks(): Promise<Task[]> {
-    return this.fetchWithAuth('/tasks');
+  // Experiments
+  getOptions() {
+    return this.request<Options>('/options');
   }
 
-  async getTask(id: string): Promise<Task> {
-    return this.fetchWithAuth(`/tasks/${id}`);
+  listExperiments() {
+    return this.request<Experiment[]>('/experiments');
   }
 
-  async createTask(task: TaskCreate): Promise<Task> {
-    return this.fetchWithAuth('/tasks', {
-      method: 'POST',
-      body: JSON.stringify(task)
-    });
+  getExperiment(id: string) {
+    return this.request<Experiment>(`/experiments/${id}`);
   }
 
-  async startTask(id: string) {
-    return this.fetchWithAuth(`/tasks/${id}/start`, { method: 'POST' });
+  createExperiment(body: ExperimentCreate) {
+    return this.request<Experiment>('/experiments', { method: 'POST', body: JSON.stringify(body) });
   }
 
-  async pauseTask(id: string) {
-    return this.fetchWithAuth(`/tasks/${id}/pause`, { method: 'POST' });
+  control(id: string, action: 'start' | 'pause' | 'resume' | 'stop') {
+    return this.request<{ status: string }>(`/experiments/${id}/${action}`, { method: 'POST' });
   }
 
-  async resumeTask(id: string) {
-    return this.fetchWithAuth(`/tasks/${id}/resume`, { method: 'POST' });
+  deleteExperiment(id: string) {
+    return this.request(`/experiments/${id}`, { method: 'DELETE' });
   }
 
-  async stopTask(id: string) {
-    return this.fetchWithAuth(`/tasks/${id}/stop`, { method: 'POST' });
+  listGames(id: string) {
+    return this.request<GameRecord[]>(`/experiments/${id}/games`);
   }
 
-  async updateTask(id: string, updates: Partial<Task>): Promise<Task> {
-    return this.fetchWithAuth(`/tasks/${id}`, {
-      method: 'PATCH',
-      body: JSON.stringify(updates)
-    });
+  getMoves(id: string, gameId: number) {
+    return this.request<{ game: GameRecord; opening_grid: string[]; moves: ReplayMove[] }>(`/experiments/${id}/games/${gameId}/moves`);
   }
 
-  async toggleTaskLearning(id: string, enabled?: boolean): Promise<Task> {
-    return this.fetchWithAuth(`/tasks/${id}/toggle-learning`, {
-      method: 'POST',
-      body: JSON.stringify(enabled !== undefined ? { persistent_learning: enabled, use_persistent_learning: enabled } : {})
-    });
+  setSpeed(id: string, speed: 'watch' | 'fast') {
+    return this.request<{ speed: string }>(`/experiments/${id}/speed`, { method: 'POST', body: JSON.stringify({ speed }) });
   }
 
-  // Iterations
-  async getTaskIterations(taskId: string): Promise<Iteration[]> {
-    return this.fetchWithAuth(`/tasks/${taskId}/iterations`);
+  getExperimentMemory(id: string) {
+    return this.request<MemorySummary>(`/experiments/${id}/memory`);
   }
 
-  // Learnings
-  async getTaskLearnings(taskId: string): Promise<LearningRecord[]> {
-    return this.fetchWithAuth(`/tasks/${taskId}/learnings`);
+  // Persistent pattern memory (code-only agents)
+  getMemory() {
+    return this.request<MemorySummary>('/memory');
   }
 
-  async downloadLearnings(taskId: string): Promise<Blob> {
-    const token = this.getToken();
-    const headers = new Headers();
-    if (token) headers.set('Authorization', `Bearer ${token}`);
-    
-    const response = await fetch(`${API_BASE}/tasks/${taskId}/learnings/download`, { headers });
-    if (!response.ok) throw new Error('Unable to download the file. Try again.');
-    return response.blob();
+  resetMemory() {
+    return this.request<{ deleted_patterns: number }>('/memory/reset', { method: 'POST' });
   }
 
-  // Rules
-  async getTaskRules(taskId: string): Promise<Rule[]> {
-    return this.fetchWithAuth(`/tasks/${taskId}/rules`);
+  // Playbook (LLM agents)
+  listLessons(includeRetired = false) {
+    return this.request<Lesson[]>(`/lessons${includeRetired ? '?include_retired=true' : ''}`);
   }
 
-  // Snapshots
-  async getTaskSnapshots(taskId: string): Promise<Snapshot[]> {
-    return this.fetchWithAuth(`/tasks/${taskId}/snapshots`);
+  retireLesson(id: number) {
+    return this.request<Lesson>(`/lessons/${id}`, { method: 'DELETE' });
   }
 
-  async compareSnapshots(taskId: string, snapshotId1: string, snapshotId2: string) {
-    return this.fetchWithAuth(`/tasks/${taskId}/snapshots/compare?id1=${snapshotId1}&id2=${snapshotId2}`);
-  }
-
-  // Memory
-  async searchMemory(query: string, taskId?: string): Promise<MemorySearchResult[]> {
-    const data = await this.fetchWithAuth('/memory/search', {
-      method: 'POST',
-      body: JSON.stringify({
-        query,
-        top_k: 20,
-        min_similarity: 0.3,
-        ...(taskId ? { task_id: taskId } : {})
-      })
-    });
-    return Array.isArray(data) ? data : [];
-  }
-
-  async getMemoryStats(): Promise<MemoryStats> {
-    return this.fetchWithAuth('/memory/stats');
-  }
-
-  async getMemoryHealth(): Promise<{
-    ok: boolean;
-    checks: Record<string, { ok: boolean; error?: string }>;
-  }> {
-    return this.fetchWithAuth('/memory/health');
-  }
-
-  // Settings
-  async getSettings(): Promise<Settings> {
-    return this.fetchWithAuth('/settings');
-  }
-
-  async updateSettings(settings: Partial<Settings>): Promise<Settings> {
-    return this.fetchWithAuth('/settings', {
-      method: 'PUT',
-      body: JSON.stringify(settings)
-    });
-  }
-
-  async listModels(): Promise<string[]> {
-    try {
-      const data = await this.fetchWithAuth('/settings/models');
-      if (Array.isArray(data)) return data;
-      if (data && Array.isArray(data.models)) return data.models;
-      return [];
-    } catch {
-      return ['phi3:mini', 'llama3.2:3b'];
-    }
-  }
-
-  async getHardware(): Promise<HardwareInfo> {
-    return this.fetchWithAuth('/settings/hardware');
+  resetPlaybook() {
+    return this.request<{ retired: number }>('/lessons/reset', { method: 'POST' });
   }
 }
 

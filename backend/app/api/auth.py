@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 
 from app.database.connection import get_db
 from app.database.models import User
-from app.schemas.auth import UserCreate, UserLogin, UserResponse, Token, TokenData
+from app.schemas.auth import Token, UserCreate, UserResponse
 from app.config import settings
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -31,25 +31,30 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None) -> s
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
     return encoded_jwt
 
-async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession = Depends(get_db)) -> User:
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
+async def user_from_token(token: str, db: AsyncSession) -> User | None:
+    """Return the active user a JWT belongs to, or None if the token is invalid."""
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
-        username: str = payload.get("sub")
-        if username is None:
-            raise credentials_exception
-        token_data = TokenData(user_id=payload.get("user_id"), username=username)
     except JWTError:
-        raise credentials_exception
-        
-    result = await db.execute(select(User).where(User.username == token_data.username))
+        return None
+    username = payload.get("sub")
+    if not username:
+        return None
+    result = await db.execute(select(User).where(User.username == username))
     user = result.scalar_one_or_none()
+    if user is None or not user.is_active:
+        return None
+    return user
+
+
+async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession = Depends(get_db)) -> User:
+    user = await user_from_token(token, db)
     if user is None:
-        raise credentials_exception
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     return user
 
 @router.post("/register", response_model=UserResponse)
