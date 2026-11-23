@@ -293,3 +293,102 @@ def test_rules_the_basic_rules_already_cover_are_not_counted_as_discoveries():
     # A number needing 0 (all safe) or needing all its cells is settled by the basic rules: not recorded.
     assert undecided([(frozenset({a, b}), 0), (frozenset({a, b, c}), 3), (frozenset({a, b, c}), 1)]) == [
         (frozenset({a, b, c}), 1)]
+
+
+# ---------------------------------------------------------------- restarts and keep-alive
+async def test_server_shutdown_mid_board_keeps_running_status_and_drops_the_partial_board(db, monkeypatch):
+    import asyncio
+
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "WATCH_MOVE_DELAY_MS", 20)
+    exp_id = await make(db, num_games=50)
+    async with db() as session:
+        (await session.get(Experiment, exp_id)).speed = "watch"
+        await session.commit()
+
+    moved = asyncio.Event()
+
+    async def publish(event):
+        if event["type"] == "move":
+            moved.set()
+
+    task = asyncio.create_task(PatternRunner(exp_id, publish, session_factory=db).run())
+    await moved.wait()
+    task.cancel()  # what a deploy / restart / Render sleep does to the running task
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    async with db() as session:
+        exp = await session.get(Experiment, exp_id)
+        games = list((await session.execute(select(Game))).scalars())
+        stats = list((await session.execute(select(PatternStat))).scalars())
+    assert exp.status == "running"  # so the next startup resumes it
+    assert games == [] and stats == []  # nothing from the unfinished board is kept
+
+
+async def test_startup_resumes_running_experiments_and_leaves_paused_and_llm_ones(db):
+    import asyncio
+
+    from app.experiments.manager import ExperimentManager
+
+    started = []
+
+    class FakeRunner:
+        def __init__(self, experiment_id, publish, session_factory=None):
+            self.experiment_id, self.paused, self.live = experiment_id, False, {}
+
+        async def run(self):
+            started.append(self.experiment_id)
+
+    running, paused, llm = await make(db), await make(db), await make(db)
+    async with db() as session:
+        (await session.get(Experiment, running)).status = "running"
+        (await session.get(Experiment, paused)).status = "paused"
+        llm_exp = await session.get(Experiment, llm)
+        llm_exp.status, llm_exp.agent_type = "running", "llm"
+        await session.commit()
+
+    manager = ExperimentManager(session_factory=db, runner_factory=FakeRunner)
+    result = await manager.recover_on_startup()
+    await asyncio.gather(*manager._tasks.values())  # let the resumed run start
+    assert result == {"resumed": 1, "interrupted": 1}
+    assert started == [running]
+    async with db() as session:
+        assert (await session.get(Experiment, paused)).status == "paused"
+        assert (await session.get(Experiment, llm)).status == "interrupted"
+
+
+async def test_keep_alive_pings_while_an_experiment_runs(monkeypatch):
+    import asyncio
+
+    import httpx
+
+    from app.config import settings
+    from app.experiments.manager import ExperimentManager
+
+    monkeypatch.setattr(settings, "KEEP_ALIVE_URL", "")
+    monkeypatch.setenv("RENDER_EXTERNAL_URL", "https://example.onrender.com/")
+    monkeypatch.setattr(settings, "KEEP_ALIVE_SECONDS", 0.01)
+    assert ExperimentManager.keep_alive_url() == "https://example.onrender.com/api/health"
+
+    pinged = []
+
+    async def fake_get(self, url, **kwargs):
+        pinged.append(url)
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
+    manager = ExperimentManager()
+    running = asyncio.Event()
+    manager._tasks["x"] = asyncio.create_task(running.wait())  # stands in for a running experiment
+    manager._ensure_keep_alive()
+    for _ in range(300):  # creating the HTTP client can take a moment (it loads certificates)
+        if pinged:
+            break
+        await asyncio.sleep(0.01)
+    assert pinged and pinged[0] == "https://example.onrender.com/api/health"
+    running.set()
+    await manager._tasks["x"]
+    await asyncio.wait_for(manager._keep_alive_task, 5)  # stops by itself once nothing runs
+
+    monkeypatch.delenv("RENDER_EXTERNAL_URL")
+    assert ExperimentManager.keep_alive_url() is None  # locally: no keep-alive at all

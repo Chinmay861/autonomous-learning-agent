@@ -145,17 +145,18 @@ class PatternRunner:
                 completed = await self._play_board(game_index, players, finished)
                 if not completed:
                     break
+        # Memory is saved at the end of every finished board. Whatever is still unsaved here belongs to a
+        # board that was cut short; it is dropped, because that board is replayed from scratch on resume
+        # and the learning agent must not get a peek at it.
         except asyncio.CancelledError:
-            await self._save_memory(players[MEMORY])
-            await self._set_status(ExperimentStatus.INTERRUPTED)
+            # The server is shutting down (deploy, restart, Render putting the service to sleep). The
+            # status stays "running" (or "paused") so the next startup resumes it automatically.
             raise
         except Exception as exc:  # a bug must not leave the experiment stuck in "running"
             logger.exception("Pattern experiment crashed")
-            await self._save_memory(players[MEMORY])
             await self._set_status(ExperimentStatus.FAILED, f"{type(exc).__name__}: {exc}")
             return
 
-        await self._save_memory(players[MEMORY])
         await self._set_status(ExperimentStatus.STOPPED if self._stopped else ExperimentStatus.COMPLETED)
 
     async def _save_memory(self, player: CodePlayer) -> None:

@@ -3,11 +3,14 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import Any
 import logging
+import os
+from typing import Any
 
-from sqlalchemy import update
+import httpx
+from sqlalchemy import select, update
 
+from app.config import settings
 from app.database.connection import async_sessionmaker_db
 from app.database.models import Experiment, ExperimentStatus
 from app.experiments.pattern_runner import PatternRunner
@@ -57,6 +60,7 @@ class ExperimentManager:
         self.bus = EventBus()
         self._runners: dict[str, Any] = {}  # PatternRunner, or ExperimentRunner for LLM experiments
         self._tasks: dict[str, asyncio.Task] = {}
+        self._keep_alive_task: asyncio.Task | None = None
 
     def is_running(self, experiment_id: str) -> bool:
         task = self._tasks.get(experiment_id)
@@ -91,6 +95,7 @@ class ExperimentManager:
                 logger.error(f"Experiment {experiment_id} crashed", exc_info=t.exception())
 
         task.add_done_callback(_done)
+        self._ensure_keep_alive()
 
     async def _factory_for(self, experiment_id: str):
         async with self.session_factory() as session:
@@ -119,19 +124,66 @@ class ExperimentManager:
         runner = self.runner(experiment_id)
         return runner.live if runner else None
 
-    async def mark_interrupted_on_startup(self) -> int:
-        """Experiments that were running when the process died can be resumed by the user."""
+    async def recover_on_startup(self) -> dict[str, int]:
+        """After a restart (deploy, crash, or the host putting the service to sleep):
+
+        * code-only experiments that were running continue automatically at the next unfinished board;
+        * paused ones stay paused (Resume starts them again);
+        * LLM experiments are never restarted on their own (they would spend API quota unattended):
+          they are marked "interrupted" for the user to continue.
+        """
         async with self.session_factory() as session:
-            result = await session.execute(
-                update(Experiment)
+            rows = (await session.execute(
+                select(Experiment.id, Experiment.status, Experiment.agent_type)
                 .where(Experiment.status.in_([ExperimentStatus.RUNNING.value, ExperimentStatus.PAUSED.value]))
-                .values(status=ExperimentStatus.INTERRUPTED.value)
-            )
-            await session.commit()
-            return result.rowcount or 0
+            )).all()
+            to_resume, to_interrupt = [], []
+            for experiment_id, status, agent_type in rows:
+                if agent_type == "llm" or (status == ExperimentStatus.RUNNING.value
+                                           and not settings.AUTO_RESUME_INTERRUPTED):
+                    to_interrupt.append(experiment_id)
+                elif status == ExperimentStatus.RUNNING.value:
+                    to_resume.append(experiment_id)
+            if to_interrupt:
+                await session.execute(
+                    update(Experiment).where(Experiment.id.in_(to_interrupt))
+                    .values(status=ExperimentStatus.INTERRUPTED.value)
+                )
+                await session.commit()
+        for experiment_id in to_resume:
+            await self.start(experiment_id)
+        return {"resumed": len(to_resume), "interrupted": len(to_interrupt)}
+
+    # ------------------------------------------------------------------ keep-alive
+    @staticmethod
+    def keep_alive_url() -> str | None:
+        """Where to ping to keep the host awake: KEEP_ALIVE_URL, or Render's own public URL."""
+        base = settings.KEEP_ALIVE_URL or os.environ.get("RENDER_EXTERNAL_URL", "")
+        return f"{base.rstrip('/')}/api/health" if base else None
+
+    def _ensure_keep_alive(self) -> None:
+        if self.keep_alive_url() and (self._keep_alive_task is None or self._keep_alive_task.done()):
+            self._keep_alive_task = asyncio.create_task(self._keep_alive(), name="keep-alive")
+
+    async def _keep_alive(self) -> None:
+        """Free hosting (e.g. Render) stops a service after ~15 minutes without incoming requests, which
+        would kill a long experiment. While any experiment runs, request our own public URL now and then.
+        It stops by itself when nothing is running, so an idle service can still sleep."""
+        url = self.keep_alive_url()
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            while any(not task.done() for task in self._tasks.values()):
+                await asyncio.sleep(settings.KEEP_ALIVE_SECONDS)
+                if not any(not task.done() for task in self._tasks.values()):
+                    break
+                try:
+                    await client.get(url)
+                except Exception as exc:
+                    logger.warning(f"Keep-alive request to {url} failed: {exc}")
 
     async def shutdown(self) -> None:
         tasks = list(self._tasks.values())
+        if self._keep_alive_task is not None:
+            tasks.append(self._keep_alive_task)
         for task in tasks:
             task.cancel()
         if tasks:

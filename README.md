@@ -134,9 +134,13 @@ docker compose up -d    # Postgres + backend (:8000) + frontend (:5173)
 Blueprint; no API keys are needed.
 
 * Keep **one** backend instance: experiments run inside the API process.
-* Free web services sleep after 15 minutes without HTTP traffic, which interrupts a run. On restart,
-  running experiments are marked `interrupted`; press **Continue** to resume at the next unfinished board.
-  Finished games and saved memory are kept.
+* Free web services sleep after 15 minutes without incoming requests. While an experiment runs, the
+  backend requests its own public URL (`RENDER_EXTERNAL_URL`, set by Render) every `KEEP_ALIVE_SECONDS`
+  (default 300) so it stays awake; when nothing runs it stops, so the service can still sleep when idle.
+* If the backend restarts anyway (deploy, crash, sleep), experiments that were running **resume
+  automatically** at the next unfinished board (`AUTO_RESUME_INTERRUPTED=true`). The board that was cut
+  short is replayed from scratch, and nothing learned from its unfinished moves is kept. Paused experiments
+  stay paused; LLM experiments are never resumed automatically.
 
 ## API
 

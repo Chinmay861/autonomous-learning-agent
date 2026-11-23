@@ -195,6 +195,14 @@ export default function ExperimentPage() {
     return () => socket.close();
   }, [experimentId, handleEvent]);
 
+  // When the live connection comes back after a drop (e.g. the server restarted and resumed the run),
+  // reload so the page shows the current state instead of the frozen boards from before.
+  const wasConnected = useRef<boolean | null>(null);
+  useEffect(() => {
+    if (connected && wasConnected.current === false) load();
+    wasConnected.current = connected;
+  }, [connected, load]);
+
   // Backup refresh if the live connection drops while a run is active.
   useEffect(() => {
     if (connected || !experiment?.is_active) return;

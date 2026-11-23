@@ -28,9 +28,14 @@ async def lifespan(app: FastAPI):
         os.makedirs("storage", exist_ok=True)
     await init_db()
     manager = ExperimentManager()
-    interrupted = await manager.mark_interrupted_on_startup()
-    if interrupted:
-        logger.info(f"{interrupted} experiment(s) were running before the restart; they can be resumed.")
+    recovered = await manager.recover_on_startup()
+    if recovered["resumed"]:
+        logger.info(f"Resumed {recovered['resumed']} experiment(s) that were running before the restart.")
+    if recovered["interrupted"]:
+        logger.info(f"{recovered['interrupted']} LLM experiment(s) were interrupted by the restart; "
+                    "press Continue to resume them.")
+    if manager.keep_alive_url():
+        logger.info(f"Keep-alive while experiments run: {manager.keep_alive_url()}")
     app.state.manager = manager
     logger.info("Minesweeper Learning Agent ready (code-only agents%s)"
                 % (", LLM agents enabled" if settings.ENABLE_LLM_AGENTS else ""))
