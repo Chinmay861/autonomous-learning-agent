@@ -50,6 +50,12 @@ class Settings(BaseSettings):
     ENABLE_LLM_AGENTS: bool = False
     # Pause between move rounds in "watch" speed, so a person can follow the boards.
     WATCH_MOVE_DELAY_MS: int = 350
+    # After a restart, continue code-only experiments that were running (instead of waiting for Continue).
+    AUTO_RESUME_INTERRUPTED: bool = True
+    # While an experiment runs, request this URL every KEEP_ALIVE_SECONDS so free hosting does not put the
+    # service to sleep mid-run. Empty = use RENDER_EXTERNAL_URL (set by Render automatically); unset locally.
+    KEEP_ALIVE_URL: str = ""
+    KEEP_ALIVE_SECONDS: int = 300
 
     # --- Experiment defaults and limits
     DEFAULT_NUM_GAMES: int = 500
